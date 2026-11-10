@@ -38,7 +38,7 @@ function LL:RegisterEllesmerePlugin()
                     if EUI.IsSearchPrebuild and EUI.IsSearchPrebuild() then return math.abs(y) + 96 end
                     local _, height = EUI.Widgets:SectionHeader(parent, "LAGOM LEDGER", y)
                     y = y - height
-                    _, height = AddText(parent, "Guild-only PvP scores, professions and Alliance bounties. The board only shares data with OG lagom members who have this addon installed.", y)
+                    _, height = AddText(parent, "Guild-only PvP scores, professions and Alliance bounties. The board only shares data with OG Lagom members who have this addon installed.", y)
                     y = y - height
                     _, height = AddButton(parent, "Open guild board", y, function() LL:ToggleUI() end)
                     return math.abs(y) + height
