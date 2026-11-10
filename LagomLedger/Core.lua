@@ -4,7 +4,7 @@ LL.ADDON_NAME = addonName
 LL.GUILD_NAME = "OG Lagom"
 LL.COMM_PREFIX = "LAGOMLEDGER"
 LL.VERSION = 1
-LL.RELEASE = "1.5.0"
+LL.RELEASE = "1.5.1"
 LL.versionNoticeSent = {}
 
 local function now()
@@ -115,13 +115,13 @@ function LL:Broadcast(kind, payload)
 end
 
 function LL:Escape(value)
-    return (tostring(value or ""):gsub("[^%w%-%._ ]", function(character)
+    return ((tostring(value or ""):gsub("[^%w%-%._ ]", function(character)
         return string.format("%%%02X", string.byte(character))
-    end))
+    end)))
 end
 
 function LL:Unescape(value)
-    return (value or ""):gsub("%%(%x%x)", function(hex) return string.char(tonumber(hex, 16)) end)
+    return ((value or ""):gsub("%%(%x%x)", function(hex) return string.char(tonumber(hex, 16)) end))
 end
 
 function LL:Serialize(kind, payload)
@@ -133,8 +133,6 @@ function LL:Serialize(kind, payload)
         return table.concat({ self:Escape(payload.id), self:Escape(payload.target), self:Escape(payload.note), self:Escape(payload.postedBy), payload.createdAt or now() }, ";")
     elseif kind == "BOUNTY_COMPLETE" then
         return table.concat({ self:Escape(payload.id), self:Escape(payload.completedBy), payload.completedAt or now() }, ";")
-    elseif kind == "PVP_DEATH" then
-        return table.concat({ self:Escape(payload.victim), self:Escape(payload.killer), self:Escape(payload.zone), payload.occurredAt or now() }, ";")
     elseif kind == "CASINO_STAT" then
         return table.concat({ self:Escape(payload.name), payload.wonGold or 0, payload.lostGold or 0, payload.games or 0 }, ";")
     elseif kind == "CASINO_GAME_OPEN" then
@@ -167,8 +165,6 @@ function LL:Decode(message)
         return kind, { id = self:Unescape(fields[1]), target = self:Unescape(fields[2]), note = self:Unescape(fields[3]), postedBy = self:Unescape(fields[4]), createdAt = tonumber(fields[5]), active = true }
     elseif kind == "BOUNTY_COMPLETE" then
         return kind, { id = self:Unescape(fields[1]), completedBy = self:Unescape(fields[2]), completedAt = tonumber(fields[3]) }
-    elseif kind == "PVP_DEATH" then
-        return kind, { victim = self:Unescape(fields[1]), killer = self:Unescape(fields[2]), zone = self:Unescape(fields[3]), occurredAt = tonumber(fields[4]) }
     elseif kind == "REQUEST_SYNC" then
         return kind, {}
     elseif kind == "CASINO_STAT" then
@@ -197,39 +193,6 @@ function LL:RecordDeath()
     player.updatedAt = now()
     self:Broadcast("PROFILE", { name = self:PlayerName(), kills = player.kills, deaths = player.deaths, professions = player.professions, updatedAt = player.updatedAt, release = self.RELEASE })
     self:RefreshUI()
-end
-
-function LL:CurrentZoneName()
-    local zone = GetZoneText and GetZoneText() or nil
-    local subzone = GetSubZoneText and GetSubZoneText() or nil
-    zone = zone and zone ~= "" and zone or "Unknown zone"
-    if subzone and subzone ~= "" and subzone ~= zone then return zone .. " — " .. subzone end
-    return zone
-end
-
-function LL:BroadcastPvPDeath(killer)
-    if not killer or killer == "" then return end
-    self.lastPvPDeathNotice = self.lastPvPDeathNotice or 0
-    if now() - self.lastPvPDeathNotice < 3 then return end
-    self.lastPvPDeathNotice = now()
-    local payload = {
-        victim = self:PlayerName(),
-        killer = killer,
-        zone = self:CurrentZoneName(),
-        occurredAt = now(),
-    }
-    self:Broadcast("PVP_DEATH", payload)
-    self:Print(payload.victim .. " was killed by " .. payload.killer .. " in " .. payload.zone .. ".")
-end
-
-function LL:HandleCombatLogEvent()
-    if not CombatLogGetCurrentEventInfo or not UnitGUID or not bit or not bit.band then return end
-    local _, subevent, _, sourceGUID, sourceName, sourceFlags, _, destGUID = CombatLogGetCurrentEventInfo()
-    if subevent ~= "PARTY_KILL" or destGUID ~= UnitGUID("player") or sourceGUID == UnitGUID("player") then return end
-    if not COMBATLOG_OBJECT_TYPE_PLAYER or not COMBATLOG_OBJECT_REACTION_HOSTILE then return end
-    if bit.band(sourceFlags or 0, COMBATLOG_OBJECT_TYPE_PLAYER) == 0 then return end
-    if bit.band(sourceFlags, COMBATLOG_OBJECT_REACTION_HOSTILE) == 0 then return end
-    self:BroadcastPvPDeath(sourceName)
 end
 
 function LL:AddBounty(target, note)
@@ -324,8 +287,6 @@ function LL:OnComm(prefix, message, channel, sender)
         for _, bounty in ipairs(self.db.bounties) do
             if bounty.id == payload.id then bounty.active = false; bounty.completedBy = payload.completedBy; bounty.completedAt = payload.completedAt end
         end
-    elseif kind == "PVP_DEATH" and payload.victim and payload.killer and payload.zone then
-        self:Print(payload.victim .. " was killed by " .. payload.killer .. " in " .. payload.zone .. ".")
     elseif string.sub(kind or "", 1, 12) == "CASINO_GAME_" and self.OnCasinoGameMessage then
         self:OnCasinoGameMessage(kind, payload)
     elseif string.sub(kind or "", 1, 7) == "CASINO_" and self.OnCasinoMessage then
@@ -357,8 +318,6 @@ function LL:OnEvent(event, ...)
         self:OnComm(...)
     elseif event == "CHAT_MSG_SYSTEM" and self.db and self.HandleRollMessage then
         self:HandleRollMessage(...)
-    elseif event == "COMBAT_LOG_EVENT_UNFILTERED" and self.db then
-        self:HandleCombatLogEvent()
     elseif event == "SKILL_LINES_CHANGED" and self.db then
         self:RefreshLocalProfile()
     end
@@ -390,7 +349,6 @@ frame:RegisterEvent("PLAYER_LOGIN")
 frame:RegisterEvent("PLAYER_DEAD")
 frame:RegisterEvent("CHAT_MSG_ADDON")
 frame:RegisterEvent("CHAT_MSG_SYSTEM")
-frame:RegisterEvent("COMBAT_LOG_EVENT_UNFILTERED")
 frame:RegisterEvent("SKILL_LINES_CHANGED")
 frame:SetScript("OnEvent", function(_, event, ...) LL:OnEvent(event, ...) end)
 
