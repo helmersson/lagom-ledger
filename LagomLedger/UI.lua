@@ -27,7 +27,7 @@ function LL:BuildUI()
     title:SetText("Lagom Ledger")
     local subtitle = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     subtitle:SetPoint("TOP", title, "BOTTOM", 0, -5)
-    subtitle:SetText("Guild-only data shared by OG lagom members using this addon")
+    subtitle:SetText("Guild-only data shared by OG Lagom members using this addon")
 
     local close = makeButton(frame, "Close", 70, 22)
     close:SetPoint("TOPRIGHT", -18, -18)
@@ -132,7 +132,7 @@ function LL:RefreshUI()
 end
 
 function LL:ToggleUI()
-    if not self:IsLagomMember() then self:Print("This addon is restricted to the OG lagom guild."); return end
+    if not self:IsLagomMember() then self:Print("This addon is restricted to the OG Lagom guild."); return end
     self:BuildUI()
     if self.frame:IsShown() then self.frame:Hide() else self:RefreshUI(); self.frame:Show() end
 end
@@ -303,7 +303,7 @@ function LL:RefreshCasinoUI()
 end
 
 function LL:ToggleCasino()
-    if not self:IsLagomMember() then self:Print("This addon is restricted to the OG lagom guild."); return end
+    if not self:IsLagomMember() then self:Print("This addon is restricted to the OG Lagom guild."); return end
     self:BuildCasinoUI()
     if self.casinoFrame:IsShown() then self.casinoFrame:Hide() else self:RefreshCasinoUI(); self.casinoFrame:Show() end
 end
