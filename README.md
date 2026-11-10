@@ -37,6 +37,8 @@ Members are ranked by Alliance kills, then by fewer deaths when kills are tied.
 
 Enter an Alliance character name and an optional reason or reward. Online OG lagom members with the addon receive the bounty through guild addon messages. When a user logs in, the addon automatically requests the active bounty list.
 
+Use **Complete selected target** to complete every active bounty that matches your currently selected target, or enter a board ID and choose **Complete**. Both actions synchronize the completion to other guild members with the addon.
+
 ### Synchronization
 
 The addon sends data only through the guild addon channel. It uses no external servers, accounts, or databases. Profiles synchronize on login, when professions change, and when **Sync my profile** is selected.
@@ -62,21 +64,12 @@ At login, a member's profile includes the addon release number. When an online g
 | Command | Action |
 | --- | --- |
 | `/lagom` | Open or close Lagom Ledger. |
-| `/lagom kill Name-Realm` | Record an Alliance kill when the target can no longer be selected. |
 | `/lagom death` | Manually add a death. |
 | `/lagom complete ID` | Mark an active bounty as completed. Copy its ID from the board. |
 | `/lagom casino` | Open the casino window. |
 | `/lagom settings` | Open the Lagom Ledger section in EllesmereUI, when EllesmereUI is installed. |
 | `/lagom sync` | Send your profile and professions to other addon users in the guild. |
 | `/lagom help` | Show a short command list in chat. |
-
-## Recording a kill
-
-1. Select an Alliance player.
-2. Open `/lagom`.
-3. Select **Record selected Alliance kill**.
-
-The button checks that your selected target is Alliance before recording the kill. If the target is no longer available, use `/lagom kill Name-Realm` instead.
 
 ## Playing a casino game
 
@@ -90,7 +83,7 @@ Every entrant must have at least the wager available in their bags before they c
 
 ## Important limitations
 
-WoW Forever currently does not send ordinary combat-log events to addons. Lagom Ledger therefore **cannot automatically verify or count PvP kills**. Alliance kills must be recorded using the button or command above.
+WoW Forever currently does not send ordinary combat-log events to addons. Lagom Ledger therefore **cannot automatically verify or count PvP kills**, or complete bounties from a kill automatically. Complete a bounty from the board by selecting the target and choosing **Complete selected target**, or enter its ID and choose **Complete**.
 
 The addon automatically records the local character's `PLAYER_DEAD` event. This also includes deaths outside PvP. Use `/lagom death` only for additions or corrections, so that a death is not recorded twice.
 
