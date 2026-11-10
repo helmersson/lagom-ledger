@@ -1,10 +1,10 @@
 # Lagom Ledger
 
-**Lagom Ledger** is a guild addon for *World of Warcraft Forever*. It gives the **OG lagom** guild a shared PvP leaderboard and a bounty board for Alliance players.
+**Lagom Ledger** is a guild addon for *World of Warcraft Forever*. It gives the **OG Lagom** guild a shared PvP leaderboard and a bounty board for Alliance players.
 
 Only guild members who have the addon installed can open the interface or receive its synchronized data.
 
-When [EllesmereUI](https://github.com/EllesmereGaming/EllesmereUI) is installed, Lagom Ledger registers an **OG lagom** section in its settings panel. This integration uses EllesmereUI's supported plugin API and does not change EllesmereUI's own files.
+When [EllesmereUI](https://github.com/EllesmereGaming/EllesmereUI) is installed, Lagom Ledger registers an **OG Lagom** section in its settings panel. This integration uses EllesmereUI's supported plugin API and does not change EllesmereUI's own files.
 
 ## Installation
 
@@ -19,7 +19,7 @@ When [EllesmereUI](https://github.com/EllesmereGaming/EllesmereUI) is installed,
 4. Confirm that **Lagom Ledger** is enabled in the game's AddOns list.
 5. Type `/lagom` in chat to open the board.
 
-> The addon is restricted to a guild whose exact name is `OG lagom`. If the guild is renamed, change `LL.GUILD_NAME` in `LagomLedger/Core.lua`.
+> The addon is restricted to the `OG Lagom` guild. Guild-name comparison ignores capitalization, but a guild rename still requires changing `LL.GUILD_NAME` in `LagomLedger/Core.lua`.
 
 ## Features
 
@@ -35,7 +35,7 @@ Members are ranked by Alliance kills, then by fewer deaths when kills are tied.
 
 ### Bounty board
 
-Enter an Alliance character name and an optional reason or reward. Online OG lagom members with the addon receive the bounty through guild addon messages. When a user logs in, the addon automatically requests the active bounty list.
+Enter an Alliance character name and an optional reason or reward. Online OG Lagom members with the addon receive the bounty through guild addon messages. When a user logs in, the addon automatically requests the active bounty list.
 
 Use **Complete selected target** to complete every active bounty that matches your currently selected target, or enter a board ID and choose **Complete**. Both actions synchronize the completion to other guild members with the addon.
 
