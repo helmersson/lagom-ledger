@@ -89,7 +89,7 @@ WoW Forever does not expose every ordinary combat-log event to addons. Lagom Led
 
 The addon automatically records every local character death through the `PLAYER_DEAD` event and synchronizes the new death total to guild members with the addon. This also includes deaths outside PvP. Use `/lagom death` only for additions or corrections, so that a death is not recorded twice.
 
-When WoW Forever exposes a direct player-versus-player killing blow through the combat log, Lagom Ledger announces the victim, killer, and zone to guild members who have the addon. Some Forever client situations do not expose ordinary combat-log events to addons; in those cases the addon cannot reliably identify a killer and intentionally does not send a guessed PvP-death notice.
+WoW Forever blocks addons from subscribing to the combat-log event required to identify a PvP killer. Lagom Ledger therefore cannot safely send the requested victim, killer, and zone notification without guessing; the automatic death counter remains enabled through PLAYER_DEAD.
 
 Guild addon messages are not a secure anti-cheat system. Treat the leaderboard as a shared guild honor board, not as authoritative statistics from the game server.
 
