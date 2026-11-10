@@ -1,8 +1,8 @@
 ## Interface: 16001
 ## Title: Lagom Ledger
-## Notes: Guild PvP leaderboard and bounty board for OG lagom.
-## Author: OG lagom
-## Version: 1.4.1
+## Notes: Guild PvP leaderboard and bounty board for OG Lagom.
+## Author: OG Lagom
+## Version: 1.4.2
 ## SavedVariables: LagomLedgerDB
 ## OptionalDeps: Blizzard_Professions, EllesmereUI
 
