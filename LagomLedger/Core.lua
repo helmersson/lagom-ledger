@@ -4,7 +4,7 @@ LL.ADDON_NAME = addonName
 LL.GUILD_NAME = "OG lagom"
 LL.COMM_PREFIX = "LAGOMLEDGER"
 LL.VERSION = 1
-LL.RELEASE = "1.3.0"
+LL.RELEASE = "1.4.0"
 LL.versionNoticeSent = {}
 
 local function now()
@@ -183,19 +183,6 @@ function LL:Decode(message)
     end
 end
 
-function LL:RecordKill(targetName)
-    if not targetName or targetName == "" then
-        self:Print("Select an Alliance player first, or use /lagom kill Name-Realm.")
-        return
-    end
-    local player = self:EnsurePlayer(self:PlayerName())
-    player.kills = player.kills + 1
-    player.updatedAt = now()
-    self:Broadcast("PROFILE", { name = self:PlayerName(), kills = player.kills, deaths = player.deaths, professions = player.professions, updatedAt = player.updatedAt, release = self.RELEASE })
-    self:Print("Recorded Alliance kill: " .. targetName .. ".")
-    self:RefreshUI()
-end
-
 function LL:RecordDeath()
     local player = self:EnsurePlayer(self:PlayerName())
     player.deaths = player.deaths + 1
@@ -219,17 +206,64 @@ function LL:AddBounty(target, note)
     return true
 end
 
+function LL:NormalizeBountyTarget(name)
+    return strlower(strtrim(name or "")):gsub("%s", "")
+end
+
+function LL:BountyTargetMatches(bountyTarget, targetName)
+    local bountyName = self:NormalizeBountyTarget(bountyTarget)
+    local killedName = self:NormalizeBountyTarget(targetName)
+    if bountyName == "" or killedName == "" then return false end
+    if bountyName == killedName then return true end
+    return bountyName:match("^[^-]+") == killedName:match("^[^-]+")
+end
+
+function LL:MarkBountyComplete(bounty)
+    bounty.active = false
+    bounty.completedBy = self:PlayerName()
+    bounty.completedAt = now()
+    self:Broadcast("BOUNTY_COMPLETE", { id = bounty.id, completedBy = bounty.completedBy, completedAt = bounty.completedAt })
+end
+
 function LL:CompleteBounty(id)
+    id = strtrim(id or "")
     for _, bounty in ipairs(self.db.bounties) do
         if bounty.id == id and bounty.active then
-            bounty.active = false
-            bounty.completedBy = self:PlayerName()
-            bounty.completedAt = now()
-            self:Broadcast("BOUNTY_COMPLETE", { id = id, completedBy = bounty.completedBy, completedAt = bounty.completedAt })
+            self:MarkBountyComplete(bounty)
             self:RefreshUI()
-            return
+            self:Print("Completed bounty for " .. bounty.target .. ".")
+            return true
         end
     end
+    self:Print("No active bounty found with that ID.")
+    return false
+end
+
+function LL:CompleteBountiesForTarget(targetName)
+    local completed = 0
+    for _, bounty in ipairs(self.db.bounties) do
+        if bounty.active and self:BountyTargetMatches(bounty.target, targetName) then
+            self:MarkBountyComplete(bounty)
+            completed = completed + 1
+        end
+    end
+    if completed > 0 then self:RefreshUI() end
+    return completed
+end
+
+function LL:CompleteSelectedBounties()
+    local name = UnitName("target")
+    if not name then
+        self:Print("Select the completed bounty target first.")
+        return false
+    end
+    local completed = self:CompleteBountiesForTarget(name)
+    if completed == 0 then
+        self:Print("No active bounty matches " .. name .. ".")
+        return false
+    end
+    self:Print("Completed " .. completed .. " matching " .. (completed == 1 and "bounty." or "bounties."))
+    return true
 end
 
 function LL:OnComm(prefix, message, channel, sender)
@@ -288,9 +322,7 @@ SLASH_LAGOMLEDGER1 = "/lagom"
 SlashCmdList.LAGOMLEDGER = function(input)
     local command, argument = input:match("^(%S*)%s*(.-)$")
     command = command:lower()
-    if command == "kill" then
-        LL:RecordKill(argument)
-    elseif command == "death" then
+    if command == "death" then
         LL:RecordDeath()
     elseif command == "complete" then
         LL:CompleteBounty(argument)
