@@ -85,7 +85,7 @@ Every entrant must have at least the wager available in their bags before they c
 
 WoW Forever currently does not send ordinary combat-log events to addons. Lagom Ledger therefore **cannot automatically verify or count PvP kills**, or complete bounties from a kill automatically. Complete a bounty from the board by selecting the target and choosing **Complete selected target**, or enter its ID and choose **Complete**.
 
-The addon automatically records the local character's `PLAYER_DEAD` event. This also includes deaths outside PvP. Use `/lagom death` only for additions or corrections, so that a death is not recorded twice.
+The addon automatically records every local character death through the `PLAYER_DEAD` event and synchronizes the new death total to guild members with the addon. This also includes deaths outside PvP. Use `/lagom death` only for additions or corrections, so that a death is not recorded twice.
 
 Guild addon messages are not a secure anti-cheat system. Treat the leaderboard as a shared guild honor board, not as authoritative statistics from the game server.
 
