@@ -10,7 +10,7 @@ end
 function LL:BuildUI()
     if self.frame then return end
     local frame = CreateFrame("Frame", "LagomLedgerFrame", UIParent, "BackdropTemplate")
-    frame:SetSize(680, 510)
+    frame:SetSize(680, 555)
     frame:SetPoint("CENTER")
     frame:SetMovable(true)
     frame:EnableMouse(true)
@@ -33,15 +33,8 @@ function LL:BuildUI()
     close:SetPoint("TOPRIGHT", -18, -18)
     close:SetScript("OnClick", function() frame:Hide() end)
 
-    local kill = makeButton(frame, "Record selected Alliance kill", 210, 24)
-    kill:SetPoint("TOPLEFT", 24, -65)
-    kill:SetScript("OnClick", function()
-        local name = UnitName("target")
-        local faction = UnitFactionGroup("target")
-        if name and faction == "Alliance" then LL:RecordKill(name) else LL:Print("Select an Alliance player first.") end
-    end)
     local sync = makeButton(frame, "Sync my profile", 130, 24)
-    sync:SetPoint("LEFT", kill, "RIGHT", 8, 0)
+    sync:SetPoint("TOPLEFT", 24, -65)
     sync:SetScript("OnClick", function() LL:RefreshLocalProfile() end)
     local casino = makeButton(frame, "Open casino", 100, 24)
     casino:SetPoint("LEFT", sync, "RIGHT", 8, 0)
@@ -94,6 +87,25 @@ function LL:BuildUI()
     bounties:SetJustifyH("LEFT")
     bounties:SetFading(false)
     self.bountyText = bounties
+    bounties:SetSize(625, 102)
+
+    local completeSelected = makeButton(frame, "Complete selected target", 210, 24)
+    completeSelected:SetPoint("TOPLEFT", 28, -475)
+    completeSelected:SetScript("OnClick", function() LL:CompleteSelectedBounties() end)
+    local completeId = CreateFrame("EditBox", nil, frame, "InputBoxTemplate")
+    completeId:SetPoint("LEFT", completeSelected, "RIGHT", 10, 0)
+    completeId:SetSize(180, 24)
+    completeId:SetAutoFocus(false)
+    completeId:SetTextInsets(6, 6, 0, 0)
+    self.completeBountyId = completeId
+    local completeIdLabel = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    completeIdLabel:SetPoint("BOTTOMLEFT", completeId, "TOPLEFT", 0, 3)
+    completeIdLabel:SetText("Bounty ID")
+    local completeById = makeButton(frame, "Complete", 90, 24)
+    completeById:SetPoint("LEFT", completeId, "RIGHT", 10, 0)
+    completeById:SetScript("OnClick", function()
+        if LL:CompleteBounty(completeId:GetText()) then completeId:SetText("") end
+    end)
 end
 
 function LL:RefreshUI()
