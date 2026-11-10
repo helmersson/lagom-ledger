@@ -1,10 +1,10 @@
 local addonName, LL = ...
 
 LL.ADDON_NAME = addonName
-LL.GUILD_NAME = "OG lagom"
+LL.GUILD_NAME = "OG Lagom"
 LL.COMM_PREFIX = "LAGOMLEDGER"
 LL.VERSION = 1
-LL.RELEASE = "1.4.1"
+LL.RELEASE = "1.4.2"
 LL.versionNoticeSent = {}
 
 local function now()
@@ -17,7 +17,8 @@ function LL:PlayerName()
 end
 
 function LL:IsLagomMember()
-    return GetGuildInfo("player") == self.GUILD_NAME
+    local guildName = GetGuildInfo("player")
+    return type(guildName) == "string" and string.lower(guildName) == string.lower(self.GUILD_NAME)
 end
 
 function LL:Print(message)
@@ -89,6 +90,7 @@ function LL:GetProfessions()
 end
 
 function LL:RefreshLocalProfile()
+    if not self.db then return end
     local player = self:EnsurePlayer(self:PlayerName())
     player.professions = self:GetProfessions()
     player.updatedAt = now()
@@ -184,6 +186,7 @@ function LL:Decode(message)
 end
 
 function LL:RecordDeath()
+    if not self.db then return end
     local player = self:EnsurePlayer(self:PlayerName())
     player.deaths = player.deaths + 1
     player.updatedAt = now()
@@ -267,7 +270,7 @@ function LL:CompleteSelectedBounties()
 end
 
 function LL:OnComm(prefix, message, channel, sender)
-    if prefix ~= self.COMM_PREFIX or channel ~= "GUILD" or not self:IsLagomMember() or sender == self:PlayerName() then return end
+    if not self.db or prefix ~= self.COMM_PREFIX or channel ~= "GUILD" or not self:IsLagomMember() or sender == self:PlayerName() then return end
     local kind, payload = self:Decode(message)
     if kind == "PROFILE" and type(payload.name) == "string" then
         local player = self:EnsurePlayer(payload.name)
@@ -307,13 +310,13 @@ function LL:OnEvent(event, ...)
         if self.RegisterEllesmerePlugin then self:RegisterEllesmerePlugin() end
         self:RefreshLocalProfile()
         self:Broadcast("REQUEST_SYNC", {})
-    elseif event == "PLAYER_DEAD" then
+    elseif event == "PLAYER_DEAD" and self.db then
         self:RecordDeath()
-    elseif event == "CHAT_MSG_ADDON" then
+    elseif event == "CHAT_MSG_ADDON" and self.db then
         self:OnComm(...)
-    elseif event == "CHAT_MSG_SYSTEM" and self.HandleRollMessage then
+    elseif event == "CHAT_MSG_SYSTEM" and self.db and self.HandleRollMessage then
         self:HandleRollMessage(...)
-    elseif event == "SKILL_LINES_CHANGED" then
+    elseif event == "SKILL_LINES_CHANGED" and self.db then
         self:RefreshLocalProfile()
     end
 end
