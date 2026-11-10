@@ -2,7 +2,7 @@
 ## Title: Lagom Ledger
 ## Notes: Guild PvP leaderboard and bounty board for OG Lagom.
 ## Author: OG Lagom
-## Version: 1.5.0
+## Version: 1.5.1
 ## SavedVariables: LagomLedgerDB
 ## OptionalDeps: Blizzard_Professions, EllesmereUI
 
