@@ -4,7 +4,7 @@ LL.ADDON_NAME = addonName
 LL.GUILD_NAME = "OG lagom"
 LL.COMM_PREFIX = "LAGOMLEDGER"
 LL.VERSION = 1
-LL.RELEASE = "1.4.0"
+LL.RELEASE = "1.4.1"
 LL.versionNoticeSent = {}
 
 local function now()
