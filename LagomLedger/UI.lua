@@ -26,7 +26,10 @@ local function makeSurface(parent)
 end
 
 local function makeActionButton(parent, text, width, callback)
-    local button = makeSurface(parent)
+    local button = CreateFrame("Button", nil, parent, "BackdropTemplate")
+    button:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8x8", edgeFile = "Interface\\Buttons\\WHITE8x8", edgeSize = 1 })
+    button:SetBackdropColor(unpack(colors.surface))
+    button:SetBackdropBorderColor(unpack(colors.border))
     button:SetSize(width, 28)
     local label = button:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     label:SetPoint("CENTER")
@@ -45,7 +48,10 @@ local function makeActionButton(parent, text, width, callback)
 end
 
 local function makeNavigationButton(parent, text)
-    local button = makeSurface(parent)
+    local button = CreateFrame("Button", nil, parent, "BackdropTemplate")
+    button:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8x8", edgeFile = "Interface\\Buttons\\WHITE8x8", edgeSize = 1 })
+    button:SetBackdropColor(unpack(colors.surface))
+    button:SetBackdropBorderColor(unpack(colors.border))
     button:SetSize(140, 34)
     button.label = button:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     button.label:SetPoint("LEFT", 12, 0)
