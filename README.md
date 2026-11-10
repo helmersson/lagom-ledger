@@ -31,7 +31,9 @@ The leaderboard displays each addon user's:
 - recorded deaths
 - known professions
 
-Members are ranked by Alliance kills, then by fewer deaths when kills are tied.
+Members are ranked by Alliance kills, then by fewer deaths when kills are tied. Professions are shown on their own dedicated page.
+
+The main board uses an EllesmereUI-inspired dark layout with separate **PvP Leaderboard**, **Professions**, and **Bounty Board** pages. It also adds a draggable minimap button: left-click opens the guild board and right-click opens the casino.
 
 ### Bounty board
 
@@ -83,9 +85,11 @@ Every entrant must have at least the wager available in their bags before they c
 
 ## Important limitations
 
-WoW Forever currently does not send ordinary combat-log events to addons. Lagom Ledger therefore **cannot automatically verify or count PvP kills**, or complete bounties from a kill automatically. Complete a bounty from the board by selecting the target and choosing **Complete selected target**, or enter its ID and choose **Complete**.
+WoW Forever does not expose every ordinary combat-log event to addons. Lagom Ledger therefore **cannot automatically verify or count PvP kills**, or complete bounties from a kill automatically. Complete a bounty from the board by selecting the target and choosing **Complete selected target**, or enter its ID and choose **Complete**.
 
 The addon automatically records every local character death through the `PLAYER_DEAD` event and synchronizes the new death total to guild members with the addon. This also includes deaths outside PvP. Use `/lagom death` only for additions or corrections, so that a death is not recorded twice.
+
+When WoW Forever exposes a direct player-versus-player killing blow through the combat log, Lagom Ledger announces the victim, killer, and zone to guild members who have the addon. Some Forever client situations do not expose ordinary combat-log events to addons; in those cases the addon cannot reliably identify a killer and intentionally does not send a guessed PvP-death notice.
 
 Guild addon messages are not a secure anti-cheat system. Treat the leaderboard as a shared guild honor board, not as authoritative statistics from the game server.
 
