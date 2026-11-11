@@ -9,6 +9,7 @@
 - A pushed tag matching `v*` runs the same validation, verifies that the tag exactly matches `## Version` in `LagomLedger/LagomLedger.toc`, then runs `BigWigsMods/packager@v2` with `-g forever`.
 - The release job uses `GH_API_TOKEN: ${{ github.token }}` and job-scoped `contents: write`, so no personal access token or repository secret is required for GitHub Releases.
 - `fetch-depth: 0` keeps tag history available for the packager's generated changelog.
+- `.pkgmeta` maps the repository's nested `LagomLedger` source directory to the ZIP's `LagomLedger` installation folder and excludes project-only files.
 
 ## Release procedure
 
