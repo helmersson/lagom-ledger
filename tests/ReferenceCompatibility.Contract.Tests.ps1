@@ -5,6 +5,7 @@ $core = Get-Content -Raw (Join-Path $root 'LagomLedger\Core.lua')
 $compatibility = Get-Content -Raw (Join-Path $root 'LagomLedger\ReferenceCompatibility.lua')
 $ui = Get-Content -Raw (Join-Path $root 'LagomLedger\UI.lua')
 $toc = Get-Content -Raw (Join-Path $root 'LagomLedger\LagomLedger.toc')
+$workflow = Get-Content -Raw (Join-Path $root '.github\workflows\release.yml')
 
 function Assert-Contains([string]$Text, [string]$Needle, [string]$Label) {
     if (-not $Text.Contains($Needle)) { throw "Missing ${Label}: $Needle" }
@@ -29,6 +30,12 @@ Assert-Contains $core 'primaryProfessions = player.primaryProfessions' 'native p
 Assert-Contains $ui 'local tabs = { "Kills", "Deaths", "Bounties", "Professions" }' 'reference board tabs'
 Assert-Contains $ui 'function LL:ToggleCasino()' 'retained casino entry point'
 Assert-Contains $ui 'function LL:BuildMinimapButton()' 'retained minimap button'
+Assert-Contains $workflow "tags: ['v*']" 'version-tag trigger'
+Assert-Contains $workflow 'BigWigsMods/packager@v2' 'BigWigs packager action'
+Assert-Contains $workflow 'GH_API_TOKEN: ${{ github.token }}' 'GitHub release token mapping'
+Assert-Contains $workflow 'contents: write' 'release permission'
+Assert-Contains $workflow 'fetch-depth: 0' 'tag history checkout'
+Assert-Contains $workflow 'test "v${toc_version}" = "${GITHUB_REF_NAME}"' 'tag and TOC version check'
 
 Write-Output 'Reference compatibility static contract passed.'
 
