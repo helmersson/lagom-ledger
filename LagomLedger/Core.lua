@@ -4,7 +4,7 @@ LL.ADDON_NAME = addonName
 LL.GUILD_NAME = "OG Lagom"
 LL.COMM_PREFIX = "LAGOMLEDGER"
 LL.VERSION = 1
-LL.RELEASE = "1.5.3"
+LL.RELEASE = "1.6.0"
 LL.versionNoticeSent = {}
 
 local function now()
@@ -65,7 +65,7 @@ end
 function LL:EnsurePlayer(name)
     local player = self.db.players[name]
     if not player then
-        player = { kills = 0, deaths = 0, professions = {}, updatedAt = now() }
+        player = { kills = 0, deaths = 0, professions = {}, class = "", level = 0, primaryProfessions = "", secondaryProfessions = "", updatedAt = now() }
         self.db.players[name] = player
     end
     return player
@@ -102,6 +102,10 @@ function LL:RefreshLocalProfile()
         professions = player.professions,
         updatedAt = player.updatedAt,
         release = self.RELEASE,
+        class = player.class,
+        level = player.level,
+        primaryProfessions = player.primaryProfessions,
+        secondaryProfessions = player.secondaryProfessions,
     })
     self:RefreshUI()
 end
@@ -128,11 +132,11 @@ function LL:Serialize(kind, payload)
     if kind == "PROFILE" then
         local professions = {}
         for _, profession in ipairs(payload.professions or {}) do table.insert(professions, self:Escape(profession)) end
-        return table.concat({ self:Escape(payload.name), payload.kills or 0, payload.deaths or 0, table.concat(professions, ","), payload.updatedAt or now(), self:Escape(payload.release) }, ";")
+        return table.concat({ self:Escape(payload.name), payload.kills or 0, payload.deaths or 0, table.concat(professions, ","), payload.updatedAt or now(), self:Escape(payload.release), self:Escape(payload.class), payload.level or 0, self:Escape(payload.primaryProfessions), self:Escape(payload.secondaryProfessions) }, ";")
     elseif kind == "BOUNTY_ADD" then
         return table.concat({ self:Escape(payload.id), self:Escape(payload.target), self:Escape(payload.note), self:Escape(payload.postedBy), payload.createdAt or now() }, ";")
     elseif kind == "BOUNTY_COMPLETE" then
-        return table.concat({ self:Escape(payload.id), self:Escape(payload.completedBy), payload.completedAt or now() }, ";")
+        return table.concat({ self:Escape(payload.id), self:Escape(payload.completedBy), payload.completedAt or now(), payload.canceled and 1 or 0 }, ";")
     elseif kind == "CASINO_STAT" then
         return table.concat({ self:Escape(payload.name), payload.wonGold or 0, payload.lostGold or 0, payload.games or 0 }, ";")
     elseif kind == "CASINO_GAME_OPEN" then
@@ -160,11 +164,11 @@ function LL:Decode(message)
     if kind == "PROFILE" then
         local professions = {}
         for profession in string.gmatch(fields[4] or "", "[^,]+") do table.insert(professions, self:Unescape(profession)) end
-        return kind, { name = self:Unescape(fields[1]), kills = tonumber(fields[2]), deaths = tonumber(fields[3]), professions = professions, updatedAt = tonumber(fields[5]), release = self:Unescape(fields[6]) }
+        return kind, { name = self:Unescape(fields[1]), kills = tonumber(fields[2]), deaths = tonumber(fields[3]), professions = professions, updatedAt = tonumber(fields[5]), release = self:Unescape(fields[6]), class = self:Unescape(fields[7]), level = tonumber(fields[8]), primaryProfessions = self:Unescape(fields[9]), secondaryProfessions = self:Unescape(fields[10]) }
     elseif kind == "BOUNTY_ADD" then
         return kind, { id = self:Unescape(fields[1]), target = self:Unescape(fields[2]), note = self:Unescape(fields[3]), postedBy = self:Unescape(fields[4]), createdAt = tonumber(fields[5]), active = true }
     elseif kind == "BOUNTY_COMPLETE" then
-        return kind, { id = self:Unescape(fields[1]), completedBy = self:Unescape(fields[2]), completedAt = tonumber(fields[3]) }
+        return kind, { id = self:Unescape(fields[1]), completedBy = self:Unescape(fields[2]), completedAt = tonumber(fields[3]), canceled = tonumber(fields[4]) == 1 }
     elseif kind == "REQUEST_SYNC" then
         return kind, {}
     elseif kind == "CASINO_STAT" then
@@ -191,7 +195,7 @@ function LL:RecordDeath()
     local player = self:EnsurePlayer(self:PlayerName())
     player.deaths = player.deaths + 1
     player.updatedAt = now()
-    self:Broadcast("PROFILE", { name = self:PlayerName(), kills = player.kills, deaths = player.deaths, professions = player.professions, updatedAt = player.updatedAt, release = self.RELEASE })
+    self:Broadcast("PROFILE", { name = self:PlayerName(), kills = player.kills, deaths = player.deaths, professions = player.professions, updatedAt = player.updatedAt, release = self.RELEASE, class = player.class, level = player.level, primaryProfessions = player.primaryProfessions, secondaryProfessions = player.secondaryProfessions })
     self:RefreshUI()
 end
 
@@ -203,7 +207,7 @@ function LL:AddBounty(target, note)
     end
     local id = self:PlayerName() .. "-" .. self.db.nextBountyId
     self.db.nextBountyId = self.db.nextBountyId + 1
-    local bounty = { id = id, target = target, note = strtrim(note or ""), postedBy = self:PlayerName(), createdAt = now(), active = true }
+    local bounty = { id = id, target = target, note = strtrim(note or ""), postedBy = self:PlayerName(), createdAt = now(), updatedAt = now(), active = true }
     table.insert(self.db.bounties, bounty)
     self:Broadcast("BOUNTY_ADD", bounty)
     self:RefreshUI()
@@ -226,6 +230,8 @@ function LL:MarkBountyComplete(bounty)
     bounty.active = false
     bounty.completedBy = self:PlayerName()
     bounty.completedAt = now()
+    bounty.updatedAt = bounty.completedAt
+    bounty.canceled = nil
     self:Broadcast("BOUNTY_COMPLETE", { id = bounty.id, completedBy = bounty.completedBy, completedAt = bounty.completedAt })
 end
 
@@ -279,13 +285,17 @@ function LL:OnComm(prefix, message, channel, sender)
         player.deaths = tonumber(payload.deaths) or player.deaths
         player.professions = type(payload.professions) == "table" and payload.professions or player.professions
         player.updatedAt = tonumber(payload.updatedAt) or now()
+        player.class = type(payload.class) == "string" and payload.class or player.class
+        player.level = tonumber(payload.level) or player.level
+        player.primaryProfessions = type(payload.primaryProfessions) == "string" and payload.primaryProfessions or player.primaryProfessions
+        player.secondaryProfessions = type(payload.secondaryProfessions) == "string" and payload.secondaryProfessions or player.secondaryProfessions
         self:NotifyOutdatedMember(sender, payload.release)
     elseif kind == "BOUNTY_ADD" and payload.id and payload.target then
         for _, bounty in ipairs(self.db.bounties) do if bounty.id == payload.id then return end end
         table.insert(self.db.bounties, payload)
     elseif kind == "BOUNTY_COMPLETE" and payload.id then
         for _, bounty in ipairs(self.db.bounties) do
-            if bounty.id == payload.id then bounty.active = false; bounty.completedBy = payload.completedBy; bounty.completedAt = payload.completedAt end
+            if bounty.id == payload.id then bounty.active = false; bounty.canceled = payload.canceled; bounty.completedBy = payload.completedBy; bounty.completedAt = payload.completedAt; bounty.updatedAt = payload.completedAt end
         end
     elseif string.sub(kind or "", 1, 12) == "CASINO_GAME_" and self.OnCasinoGameMessage then
         self:OnCasinoGameMessage(kind, payload)
