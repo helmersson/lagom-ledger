@@ -1,0 +1,18 @@
+# Local release artifacts
+*.zip
+/dist/
+/release/
+
+# Lua and WoW client backups/logs
+*.luac
+*.lua.bak
+*.toc.bak
+*.log
+
+# Editor and operating-system metadata
+.vscode/
+.idea/
+*.code-workspace
+.DS_Store
+Thumbs.db
+desktop.ini
