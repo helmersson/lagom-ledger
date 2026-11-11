@@ -13,7 +13,7 @@ local function isSecret(value)
 end
 
 local function shortName(name)
-    return type(name) == "string" and (name:match("^([^%-]+)") or name) or ""
+    return type(name) == "string" and (name:match("^([^%-%s]+)") or name) or ""
 end
 
 local function fold(value)
@@ -174,8 +174,8 @@ function LL:RefreshLocalProfile()
 end
 
 local originalRecordDeath = LL.RecordDeath
-function LL:RecordDeath()
-    originalRecordDeath(self)
+function LL:RecordDeath(pvpCombat)
+    originalRecordDeath(self, pvpCombat)
     self:CollectReferenceProfile()
     self:SendLegacyStats()
 end
@@ -217,8 +217,11 @@ end
 function LL:Members()
     local members = {}
     for name, player in pairs(self.db.players) do
+        self:EnsureWeeklyStats(player)
         table.insert(members, { name = name, class = player.class or "", level = player.level or 0, kills = player.kills or 0,
-            deaths = player.deaths or 0, primaryProfessions = player.primaryProfessions or "", secondaryProfessions = player.secondaryProfessions or "",
+            deaths = player.deaths or 0, killStreak = player.killStreak or 0, aliveSince = player.aliveSince, longestLife = player.longestLife or 0, lifeTracked = player.lifeTracked,
+            weeklyKills = player.weeklyKills or 0, weeklyDeaths = player.weeklyDeaths or 0,
+            primaryProfessions = player.primaryProfessions or "", secondaryProfessions = player.secondaryProfessions or "",
             professions = player.professions or {} })
     end
     return members
@@ -385,7 +388,10 @@ function LL:CheckReferenceKills()
     if not kills then return end
     local player = self:EnsurePlayer(self:PlayerName())
     if player.lastHonorableKills and kills > player.lastHonorableKills then
+        local gainedKills = kills - player.lastHonorableKills
+        player.killStreak = (player.killStreak or 0) + gainedKills
         player.kills = math.max(player.kills or 0, kills)
+        player.weeklyKills = (player.weeklyKills or 0) + gainedKills
         player.lastHonorableKills = kills
         self:RecordReferenceKillCredit()
         self:RefreshLocalProfile()
@@ -432,7 +438,10 @@ function handlers.PLAYER_ENTERING_WORLD()
     if C_GuildInfo and C_GuildInfo.GuildRoster then pcall(C_GuildInfo.GuildRoster) end
 end
 
-function handlers.PLAYER_GUILD_UPDATE()
+function handlers.PLAYER_GUILD_UPDATE(unit)
+    if unit ~= "player" then return end
+    LL.legacyOutKeys, LL.legacyOutMessages = nil, nil
+    LL.referenceRecentDeaths, LL.referenceKillCredit = nil, nil
     LL:RefreshLocalProfile()
 end
 
@@ -502,15 +511,16 @@ SlashCmdList.LAGOMLEDGER = function(input)
         LL:CompleteBounty(argument)
     elseif command == "casino" then
         LL:ToggleCasino()
+    elseif command == "reset" then
+        LL:ResetBoardSize()
     elseif command == "settings" and LL.OpenEllesmereSettings then
         LL:OpenEllesmereSettings()
     elseif command == "sync" then
         LL:RefreshLocalProfile()
         LL:SendLegacySnapshot()
     elseif command == "help" then
-        LL:Print("/lagom kills | deaths | bounties | professions | casino | settings | sync | debug")
+        LL:Print("/lagom kills | deaths | bounties | professions | casino | reset | settings | sync | debug")
     else
         LL:ToggleUI()
     end
 end
-

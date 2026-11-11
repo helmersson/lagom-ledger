@@ -29,5 +29,4 @@ The bundled Forever source inventory resolves to commit `eac30af597e5aaa43a60f66
 
 ## Scope and remaining check
 
-No UI, options, localization, controller, or saved-variable schema changes are needed for this event-only correction. The existing UI remains unchanged. Install the release, run `/reload`, die once, and confirm that the local death total rises by one and reaches a second addon user in **OG Lagom**.
-
+No UI, options, localization, controller, or saved-variable schema changes are needed for this event-only correction. The existing UI remains unchanged. Install the release, run `/reload`, die once, and confirm that the local death total rises by one and reaches a second addon user in the current guild.

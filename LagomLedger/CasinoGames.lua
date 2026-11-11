@@ -203,7 +203,7 @@ end
 
 function LL:ApplyCasinoSettlement(settlement)
     if not settlement.id or not settlement.winner or not settlement.loser or not settlement.amount then return end
-    local key = settlement.id .. "|" .. settlement.winner .. "|" .. settlement.loser .. "|" .. settlement.amount
+    local key = self:CasinoSettlementKey(settlement)
     self.db.casinoSettlements[settlement.id] = self.db.casinoSettlements[settlement.id] or {}
     if self.db.casinoSettlements[settlement.id][key] then return end
     self.db.casinoSettlements[settlement.id][key] = settlement
@@ -267,6 +267,10 @@ function LL:OnCasinoGameMessage(kind, payload)
         self:ApplyCasinoSettlement(payload)
         self:RefreshUI()
         return
+    elseif kind == "CASINO_GAME_DEBT_PAID" then
+        self:ApplyCasinoDebtPayment(payload)
+        self:RefreshUI()
+        return
     end
     local game = self:GetGroupCasinoGame()
     if kind == "CASINO_GAME_OPEN" then
@@ -294,8 +298,10 @@ function LL:SendCasinoGameSync()
     for _, result in ipairs(self.db.casinoHistory) do
         if result.mode and result.summary then
             self:Broadcast("CASINO_GAME_RESULT", result)
-            for _, settlement in pairs(self.db.casinoSettlements[result.id] or {}) do self:Broadcast("CASINO_GAME_SETTLE", settlement) end
+            for _, settlement in pairs(self.db.casinoSettlements[result.id] or {}) do
+                self:Broadcast("CASINO_GAME_SETTLE", settlement)
+                if settlement.paidAt then self:Broadcast("CASINO_GAME_DEBT_PAID", settlement) end
+            end
         end
     end
 end
-

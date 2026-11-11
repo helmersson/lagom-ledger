@@ -4,6 +4,12 @@ function LL:HasEllesmereUI()
     return type(EllesmereUI) == "table" and type(EllesmereUI.RegisterPlugin) == "function" and type(EllesmereUI.OpenPlugin) == "function"
 end
 
+function LL:IsEllesmereMinimapActive()
+    if not C_AddOns or not C_AddOns.IsAddOnLoaded then return false end
+    local _, loaded = C_AddOns.IsAddOnLoaded("EllesmereUIMinimap")
+    return loaded == true
+end
+
 local function AddText(parent, text, y)
     local line = parent:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     line:SetPoint("TOPLEFT", 24, y)
@@ -38,7 +44,7 @@ function LL:RegisterEllesmerePlugin()
                     if EUI.IsSearchPrebuild and EUI.IsSearchPrebuild() then return math.abs(y) + 96 end
                     local _, height = EUI.Widgets:SectionHeader(parent, "LAGOM LEDGER", y)
                     y = y - height
-                    _, height = AddText(parent, "Guild-only PvP scores, professions and Alliance bounties. The board only shares data with OG Lagom members who have this addon installed.", y)
+                    _, height = AddText(parent, "Guild-only PvP scores, professions and Alliance bounties. The board only shares data with members of your current guild who have this addon installed.", y)
                     y = y - height
                     _, height = AddButton(parent, "Open guild board", y, function() LL:ToggleUI() end)
                     return math.abs(y) + height
@@ -72,4 +78,3 @@ function LL:OpenEllesmereSettings()
     end
     self:ToggleUI()
 end
-

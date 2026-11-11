@@ -13,13 +13,13 @@
 
 ## Release procedure
 
-1. Update `LL.RELEASE` and `## Version` to the same version, for example `1.6.1`.
+1. Update `LL.RELEASE` and `## Version` to the same version, for example `1.7.0`.
 2. Push the version commit to `main`.
 3. Create and push an annotated tag with the same version prefixed by `v`:
 
    ```powershell
-   git tag -a v1.6.1 -m "Lagom Ledger 1.6.1"
-   git push origin v1.6.1
+   git tag -a v1.7.0 -m "Lagom Ledger 1.7.0"
+   git push origin v1.7.0
    ```
 
 4. The workflow packages the `LagomLedger` addon and creates a GitHub Release with its ZIP asset.
@@ -29,9 +29,14 @@
 - Static: workflow content is asserted by `tests/ReferenceCompatibility.Contract.Tests.ps1`.
 - GitHub Actions runtime: pending the first pushed release tag.
 
+## First release candidate
+
+- Prepared version: `1.7.0`.
+- The addon and TOC version fields match; the static contract verifies this before the tag is created.
+- Create the release tag only after the pull request is merged and the in-game checks in the integration matrix have been accepted.
+
 ## Sources
 
 - BigWigs packager workflow guide: https://github.com/BigWigsMods/packager/wiki/GitHub-Actions-workflow
 - BigWigs packager action: https://github.com/BigWigsMods/packager
 - Blizzard forum release-workflow discussion: https://us.forums.blizzard.com/en/wow/t/creating-addon-releases-with-github-actions/613424
-
