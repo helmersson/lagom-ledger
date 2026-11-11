@@ -6,6 +6,7 @@ $compatibility = Get-Content -Raw (Join-Path $root 'LagomLedger\ReferenceCompati
 $ui = Get-Content -Raw (Join-Path $root 'LagomLedger\UI.lua')
 $toc = Get-Content -Raw (Join-Path $root 'LagomLedger\LagomLedger.toc')
 $workflow = Get-Content -Raw (Join-Path $root '.github\workflows\release.yml')
+$packageMeta = Get-Content -Raw (Join-Path $root '.pkgmeta')
 
 function Assert-Contains([string]$Text, [string]$Needle, [string]$Label) {
     if (-not $Text.Contains($Needle)) { throw "Missing ${Label}: $Needle" }
@@ -36,6 +37,9 @@ Assert-Contains $workflow 'GH_API_TOKEN: ${{ github.token }}' 'GitHub release to
 Assert-Contains $workflow 'contents: write' 'release permission'
 Assert-Contains $workflow 'fetch-depth: 0' 'tag history checkout'
 Assert-Contains $workflow 'test "v${toc_version}" = "${GITHUB_REF_NAME}"' 'tag and TOC version check'
+Assert-Contains $packageMeta 'package-as: LagomLedger' 'package name'
+Assert-Contains $packageMeta 'LagomLedger/LagomLedger: LagomLedger' 'addon folder mapping'
+Assert-Contains $packageMeta '  - tests' 'test exclusion from release package'
 
 Write-Output 'Reference compatibility static contract passed.'
 
