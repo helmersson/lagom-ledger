@@ -37,6 +37,87 @@ function LL:PlayerIdentityKey(name)
     return strlower((strtrim(name or ""):match("^([^%-%s]+)") or ""))
 end
 
+function LL:ParseRewardCopper(value)
+    local reward = strtrim(tostring(value or "")):gsub(",", ".")
+    local gold, fraction = reward:match("^(%d+)%.(%d%d?)$")
+    if not gold then gold = reward:match("^(%d+)$") end
+    if not gold then return end
+    local silver = fraction and tonumber(fraction) * (#fraction == 1 and 10 or 1) or 0
+    local copper = tonumber(gold) * 10000 + silver * 100
+    return copper > 0 and copper or nil
+end
+
+function LL:FormatMoney(copper)
+    copper = math.max(0, math.floor(tonumber(copper) or 0))
+    local gold, silver = math.floor(copper / 10000), math.floor(copper % 10000 / 100)
+    return gold .. "g " .. silver .. "s"
+end
+
+function LL:GetDailyResetStart()
+    return math.floor((GetServerTime and GetServerTime() or now()) / 86400) * 86400
+end
+
+function LL:BalanceTransactionKey(kind, settlement)
+    return table.concat({ kind or "", settlement.id or "", settlement.winner or "", settlement.loser or "", tonumber(settlement.amountCopper) or 0 }, "|")
+end
+
+function LL:RecordBalanceTransaction(kind, settlement)
+    if not self.db or not settlement or not settlement.id or not settlement.winner or not settlement.loser then return end
+    local amount = tonumber(settlement.amountCopper) or 0
+    if amount <= 0 then return end
+    local key = self:BalanceTransactionKey(kind, settlement)
+    for _, transaction in ipairs(self.db.balanceTransactions) do
+        if transaction.key == key then return transaction end
+    end
+    local transaction = { key = key, kind = kind, sourceId = settlement.id, winner = settlement.winner, loser = settlement.loser,
+        amountCopper = amount, target = settlement.target, at = settlement.createdAt or settlement.finishedAt or now(), paidAt = settlement.paidAt }
+    table.insert(self.db.balanceTransactions, transaction)
+    return transaction
+end
+
+function LL:MarkBalanceTransactionPaid(kind, settlement, paidAt)
+    local key = self:BalanceTransactionKey(kind, settlement)
+    for _, transaction in ipairs((self.db and self.db.balanceTransactions) or {}) do
+        if transaction.key == key then transaction.paidAt = paidAt or now(); return end
+    end
+end
+
+function LL:GetBalanceTransactions(scope, name)
+    local start = scope == "daily" and self:GetDailyResetStart() or (scope == "weekly" and self:GetWeeklyResetStart() or 0)
+    local identity, transactions = self:PlayerIdentityKey(name or self:PlayerName()), {}
+    for _, transaction in ipairs((self.db and self.db.balanceTransactions) or {}) do
+        local at = tonumber(transaction.at) or 0
+        if at >= start then
+            local delta = self:PlayerIdentityKey(transaction.winner) == identity and transaction.amountCopper or
+                (self:PlayerIdentityKey(transaction.loser) == identity and -transaction.amountCopper or nil)
+            if delta then table.insert(transactions, { transaction = transaction, delta = delta }) end
+        end
+    end
+    table.sort(transactions, function(left, right) return (left.transaction.at or 0) > (right.transaction.at or 0) end)
+    return transactions, start
+end
+
+function LL:GetBalanceSummary(scope, name)
+    local won, lost, transactions = 0, 0, self:GetBalanceTransactions(scope, name)
+    for _, entry in ipairs(transactions) do
+        if entry.delta > 0 then won = won + entry.delta else lost = lost - entry.delta end
+    end
+    return won, lost, won - lost, transactions
+end
+
+function LL:GetBalanceGraph(scope, name)
+    local transactions, start = self:GetBalanceTransactions(scope, name)
+    local current = GetServerTime and GetServerTime() or now()
+    if scope == "lifetime" and #transactions > 0 then start = transactions[#transactions].transaction.at or current end
+    local span = math.max(1, current - start + 1)
+    local values = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 }
+    for _, entry in ipairs(transactions) do
+        local index = math.min(12, math.max(1, math.floor(((entry.transaction.at or current) - start) / span * 12) + 1))
+        values[index] = values[index] + entry.delta
+    end
+    return values
+end
+
 function LL:MergePlayerRecords(primary, duplicate)
     local primaryUpdated, duplicateUpdated = tonumber(primary.updatedAt) or 0, tonumber(duplicate.updatedAt) or 0
     primary.kills = math.max(tonumber(primary.kills) or 0, tonumber(duplicate.kills) or 0)
@@ -149,9 +230,21 @@ function LL:InitializeGuildDatabase(db)
     db.casinoProcessedGames = db.casinoProcessedGames or {}
     db.nextCasinoId = db.nextCasinoId or 1
     db.casinoSettlements = db.casinoSettlements or {}
+    db.bountySettlements = db.bountySettlements or {}
+    db.balanceTransactions = db.balanceTransactions or {}
     db.nemeses = db.nemeses or {}
     db.vanquished = db.vanquished or {}
     db.minimap = db.minimap or { angle = 225 }
+    for _, bounty in ipairs(db.bounties) do
+        if bounty.rewardCopper == nil then bounty.rewardCopper = self:ParseRewardCopper(bounty.note) or 0 end
+    end
+    for _, settlements in pairs(db.casinoSettlements) do
+        for _, settlement in pairs(settlements) do
+            settlement.amountCopper = settlement.amountCopper or (tonumber(settlement.amount) or 0) * 10000
+            self:RecordBalanceTransaction("casino", settlement)
+        end
+    end
+    for _, settlement in pairs(db.bountySettlements) do self:RecordBalanceTransaction("bounty", settlement) end
 end
 
 function LL:EnsureDatabase()
@@ -284,9 +377,13 @@ function LL:Serialize(kind, payload)
     elseif kind == "PVP_DEATH" then
         return table.concat({ self:Escape(payload.victim), self:Escape(payload.killer) }, ";")
     elseif kind == "BOUNTY_ADD" then
-        return table.concat({ self:Escape(payload.id), self:Escape(payload.target), self:Escape(payload.note), self:Escape(payload.postedBy), payload.createdAt or now() }, ";")
+        return table.concat({ self:Escape(payload.id), self:Escape(payload.target), self:Escape(payload.note), self:Escape(payload.postedBy), payload.createdAt or now(), payload.rewardCopper or 0 }, ";")
     elseif kind == "BOUNTY_COMPLETE" then
         return table.concat({ self:Escape(payload.id), self:Escape(payload.completedBy), payload.completedAt or now(), payload.canceled and 1 or 0 }, ";")
+    elseif kind == "BOUNTY_DEBT" then
+        return table.concat({ self:Escape(payload.id), self:Escape(payload.winner), self:Escape(payload.loser), payload.amountCopper or 0, self:Escape(payload.target), payload.createdAt or now() }, ";")
+    elseif kind == "BOUNTY_DEBT_PAID" then
+        return table.concat({ self:Escape(payload.id), self:Escape(payload.paidBy), payload.paidAt or now() }, ";")
     elseif kind == "CASINO_STAT" then
         return table.concat({ self:Escape(payload.name), payload.wonGold or 0, payload.lostGold or 0, payload.games or 0 }, ";")
     elseif kind == "CASINO_GAME_OPEN" then
@@ -302,7 +399,7 @@ function LL:Serialize(kind, payload)
     elseif kind == "CASINO_GAME_RESULT" then
         return table.concat({ self:Escape(payload.id), self:Escape(payload.mode), self:Escape(payload.host), payload.wager, payload.finishedAt or now(), self:Escape(payload.summary) }, ";")
     elseif kind == "CASINO_GAME_SETTLE" then
-        return table.concat({ self:Escape(payload.id), self:Escape(payload.winner), self:Escape(payload.loser), payload.amount }, ";")
+        return table.concat({ self:Escape(payload.id), self:Escape(payload.winner), self:Escape(payload.loser), payload.amount, payload.createdAt or now() }, ";")
     elseif kind == "CASINO_GAME_DEBT_PAID" then
         return table.concat({ self:Escape(payload.id), self:Escape(payload.winner), self:Escape(payload.loser), payload.amount, self:Escape(payload.paidBy), payload.paidAt or now() }, ";")
     end
@@ -326,9 +423,13 @@ function LL:Decode(message)
     elseif kind == "PVP_DEATH" then
         return kind, { victim = self:Unescape(fields[1]), killer = self:Unescape(fields[2]) }
     elseif kind == "BOUNTY_ADD" then
-        return kind, { id = self:Unescape(fields[1]), target = self:Unescape(fields[2]), note = self:Unescape(fields[3]), postedBy = self:Unescape(fields[4]), createdAt = tonumber(fields[5]), active = true }
+        return kind, { id = self:Unescape(fields[1]), target = self:Unescape(fields[2]), note = self:Unescape(fields[3]), postedBy = self:Unescape(fields[4]), createdAt = tonumber(fields[5]), rewardCopper = tonumber(fields[6]) or 0, active = true }
     elseif kind == "BOUNTY_COMPLETE" then
         return kind, { id = self:Unescape(fields[1]), completedBy = self:Unescape(fields[2]), completedAt = tonumber(fields[3]), canceled = tonumber(fields[4]) == 1 }
+    elseif kind == "BOUNTY_DEBT" then
+        return kind, { id = self:Unescape(fields[1]), winner = self:Unescape(fields[2]), loser = self:Unescape(fields[3]), amountCopper = tonumber(fields[4]), target = self:Unescape(fields[5]), createdAt = tonumber(fields[6]) }
+    elseif kind == "BOUNTY_DEBT_PAID" then
+        return kind, { id = self:Unescape(fields[1]), paidBy = self:Unescape(fields[2]), paidAt = tonumber(fields[3]) }
     elseif kind == "REQUEST_SYNC" then
         return kind, {}
     elseif kind == "CASINO_STAT" then
@@ -346,7 +447,7 @@ function LL:Decode(message)
     elseif kind == "CASINO_GAME_RESULT" then
         return kind, { id = self:Unescape(fields[1]), mode = self:Unescape(fields[2]), host = self:Unescape(fields[3]), wager = tonumber(fields[4]), finishedAt = tonumber(fields[5]), summary = self:Unescape(fields[6]) }
     elseif kind == "CASINO_GAME_SETTLE" then
-        return kind, { id = self:Unescape(fields[1]), winner = self:Unescape(fields[2]), loser = self:Unescape(fields[3]), amount = tonumber(fields[4]) }
+        return kind, { id = self:Unescape(fields[1]), winner = self:Unescape(fields[2]), loser = self:Unescape(fields[3]), amount = tonumber(fields[4]), createdAt = tonumber(fields[5]) }
     elseif kind == "CASINO_GAME_DEBT_PAID" then
         return kind, { id = self:Unescape(fields[1]), winner = self:Unescape(fields[2]), loser = self:Unescape(fields[3]), amount = tonumber(fields[4]), paidBy = self:Unescape(fields[5]), paidAt = tonumber(fields[6]) }
     end
@@ -449,15 +550,20 @@ function LL:WasRecentPvpCombat()
     return self.lastPvpCombatAt and now() - self.lastPvpCombatAt <= 45
 end
 
-function LL:AddBounty(target, note)
+function LL:AddBounty(target, reward)
     target = strtrim(target or "")
     if target == "" then
         self:Print("Enter an Alliance character name for the bounty.")
         return false
     end
+    local rewardCopper = self:ParseRewardCopper(reward)
+    if not rewardCopper then
+        self:Print("Enter a reward such as 12.34 for 12 gold 34 silver.")
+        return false
+    end
     local id = self:PlayerName() .. "-" .. self.db.nextBountyId
     self.db.nextBountyId = self.db.nextBountyId + 1
-    local bounty = { id = id, target = target, note = strtrim(note or ""), postedBy = self:PlayerName(), createdAt = now(), updatedAt = now(), active = true }
+    local bounty = { id = id, target = target, note = "", rewardCopper = rewardCopper, postedBy = self:PlayerName(), createdAt = now(), updatedAt = now(), active = true }
     table.insert(self.db.bounties, bounty)
     self:Broadcast("BOUNTY_ADD", bounty)
     self:RefreshUI()
@@ -476,13 +582,40 @@ function LL:BountyTargetMatches(bountyTarget, targetName)
     return bountyName:match("^[^-]+") == killedName:match("^[^-]+")
 end
 
+function LL:ApplyBountySettlement(settlement)
+    if not self.db or not settlement or not settlement.id or not settlement.winner or not settlement.loser or (tonumber(settlement.amountCopper) or 0) <= 0 then return end
+    local existing = self.db.bountySettlements[settlement.id]
+    if existing then return existing end
+    self.db.bountySettlements[settlement.id] = settlement
+    self:RecordBalanceTransaction("bounty", settlement)
+    return settlement
+end
+
+function LL:CreateBountySettlement(bounty)
+    local reward = tonumber(bounty.rewardCopper) or 0
+    if reward <= 0 or not bounty.completedBy or self:PlayerIdentityKey(bounty.postedBy) == self:PlayerIdentityKey(bounty.completedBy) then return end
+    return self:ApplyBountySettlement({ id = bounty.id, winner = bounty.completedBy, loser = bounty.postedBy, amountCopper = reward,
+        target = bounty.target, createdAt = bounty.completedAt or now() })
+end
+
+function LL:ApplyBountyDebtPayment(payment)
+    if not self.db or not payment or not payment.id or not payment.paidBy then return end
+    local settlement = self.db.bountySettlements[payment.id]
+    if not settlement or settlement.paidAt or self:PlayerIdentityKey(settlement.loser) ~= self:PlayerIdentityKey(payment.paidBy) then return end
+    settlement.paidAt, settlement.paidBy = payment.paidAt or now(), payment.paidBy
+    self:MarkBalanceTransactionPaid("bounty", settlement, settlement.paidAt)
+    self:RefreshUI()
+end
+
 function LL:MarkBountyComplete(bounty)
     bounty.active = false
     bounty.completedBy = self:PlayerName()
     bounty.completedAt = now()
     bounty.updatedAt = bounty.completedAt
     bounty.canceled = nil
+    local settlement = self:CreateBountySettlement(bounty)
     self:Broadcast("BOUNTY_COMPLETE", { id = bounty.id, completedBy = bounty.completedBy, completedAt = bounty.completedAt })
+    if settlement then self:Broadcast("BOUNTY_DEBT", settlement) end
 end
 
 function LL:CompleteBounty(id)
@@ -571,12 +704,25 @@ function LL:OnComm(prefix, message, channel, sender)
         if payload.killer and payload.killer ~= "" then message = message .. " to " .. payload.killer .. " (last observed hostile target)" end
         self:Print(message .. ".")
     elseif kind == "BOUNTY_ADD" and payload.id and payload.target then
-        for _, bounty in ipairs(self.db.bounties) do if bounty.id == payload.id then return end end
+        for _, bounty in ipairs(self.db.bounties) do
+            if bounty.id == payload.id then
+                if (payload.rewardCopper or 0) > 0 then bounty.rewardCopper, bounty.note = payload.rewardCopper, payload.note end
+                self:RefreshUI()
+                return
+            end
+        end
         table.insert(self.db.bounties, payload)
     elseif kind == "BOUNTY_COMPLETE" and payload.id then
         for _, bounty in ipairs(self.db.bounties) do
-            if bounty.id == payload.id then bounty.active = false; bounty.canceled = payload.canceled; bounty.completedBy = payload.completedBy; bounty.completedAt = payload.completedAt; bounty.updatedAt = payload.completedAt end
+            if bounty.id == payload.id then
+                bounty.active, bounty.canceled, bounty.completedBy, bounty.completedAt, bounty.updatedAt = false, payload.canceled, payload.completedBy, payload.completedAt, payload.completedAt
+                if not payload.canceled then self:CreateBountySettlement(bounty) end
+            end
         end
+    elseif kind == "BOUNTY_DEBT" then
+        self:ApplyBountySettlement(payload)
+    elseif kind == "BOUNTY_DEBT_PAID" then
+        self:ApplyBountyDebtPayment(payload)
     elseif string.sub(kind or "", 1, 12) == "CASINO_GAME_" and self.OnCasinoGameMessage then
         self:OnCasinoGameMessage(kind, payload)
     elseif string.sub(kind or "", 1, 7) == "CASINO_" and self.OnCasinoMessage then
@@ -585,6 +731,9 @@ function LL:OnComm(prefix, message, channel, sender)
         self:RefreshLocalProfile()
         for _, bounty in ipairs(self.db.bounties) do
             if bounty.active then self:Broadcast("BOUNTY_ADD", bounty) end
+        end
+        for _, settlement in pairs(self.db.bountySettlements) do
+            if not settlement.paidAt then self:Broadcast("BOUNTY_DEBT", settlement) end
         end
         if self.SendCasinoSync then self:SendCasinoSync() end
         if self.SendCasinoGameSync then self:SendCasinoGameSync() end
@@ -653,6 +802,8 @@ SlashCmdList.LAGOMLEDGER = function(input)
         LL:CompleteBounty(argument)
     elseif command == "casino" then
         LL:ToggleCasino()
+    elseif command == "balance" then
+        LL:ToggleUI("balance")
     elseif command == "reset" then
         LL:ResetBoardSize()
     elseif command == "settings" and LL.OpenEllesmereSettings then

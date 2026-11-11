@@ -154,10 +154,11 @@ end
 function LL:SendLegacyBounty(bounty)
     if not bounty or not bounty.id then return end
     local updatedAt = bounty.updatedAt or bounty.completedAt or bounty.createdAt or now()
+    local reward = tonumber(bounty.rewardCopper) or 0
     self:QueueLegacyMessage("B:" .. bounty.id, ("B;%s;%s;%s;%d;%s;%s;%d;%s"):format(
         clean(bounty.id, 70), clean(bounty.target, 40), clean(shortName(bounty.postedBy), 40),
         tonumber(bounty.createdAt) or now(), self:LegacyBountyStatus(bounty),
-        clean(shortName(bounty.completedBy), 40), tonumber(updatedAt) or now(), clean(bounty.note, 90)))
+        clean(shortName(bounty.completedBy), 40), tonumber(updatedAt) or now(), clean(("%d.%02d"):format(math.floor(reward / 10000), math.floor(reward % 10000 / 100)), 90)))
 end
 
 function LL:SendLegacySnapshot()
@@ -181,8 +182,8 @@ function LL:RecordDeath(pvpCombat)
 end
 
 local originalAddBounty = LL.AddBounty
-function LL:AddBounty(target, note)
-    local added = originalAddBounty(self, target, note)
+function LL:AddBounty(target, reward)
+    local added = originalAddBounty(self, target, reward)
     if added then
         local bounty = self.db.bounties[#self.db.bounties]
         bounty.updatedAt = now()
@@ -239,8 +240,8 @@ function LL:Bounties()
     return bounties
 end
 
-function LL:PostBounty(target, note)
-    return self:AddBounty(target, note)
+function LL:PostBounty(target, reward)
+    return self:AddBounty(target, reward)
 end
 
 function LL:MergeLegacyBounty(data)
@@ -249,23 +250,26 @@ function LL:MergeLegacyBounty(data)
         if bounty.id == data.id then
             if (bounty.updatedAt or bounty.createdAt or 0) >= incomingUpdated then return end
             bounty.target, bounty.postedBy, bounty.createdAt = data.target, data.postedBy, data.createdAt
-            bounty.note, bounty.updatedAt, bounty.canceled = data.note, incomingUpdated, data.status == "X"
+            bounty.note, bounty.rewardCopper, bounty.updatedAt, bounty.canceled = data.note, self:ParseRewardCopper(data.note) or 0, incomingUpdated, data.status == "X"
             bounty.active = data.status == "O"
             bounty.completedBy = data.status == "C" and data.completedBy or nil
             bounty.completedAt = bounty.active and nil or incomingUpdated
+            if data.status == "C" then self:CreateBountySettlement(bounty) end
             self:RefreshUI()
             return
         end
     end
-    table.insert(self.db.bounties, {
+    local bounty = {
         id = data.id, target = data.target, postedBy = data.postedBy, createdAt = data.createdAt,
-        note = data.note, updatedAt = incomingUpdated, active = data.status == "O",
+        note = data.note, rewardCopper = self:ParseRewardCopper(data.note) or 0, updatedAt = incomingUpdated, active = data.status == "O",
         canceled = data.status == "X", completedBy = data.status == "C" and data.completedBy or nil,
         completedAt = data.status == "O" and nil or incomingUpdated,
-    })
+    }
+    table.insert(self.db.bounties, bounty)
+    if data.status == "C" then self:CreateBountySettlement(bounty) end
     if now() - incomingUpdated < 120 then
         if data.status == "O" then
-            self:Print(("%s posted a bounty on |cffff5555%s|r%s"):format(data.postedBy, data.target, data.note ~= "" and (": " .. data.note) or "."))
+            self:Print(("%s posted a bounty on |cffff5555%s|r for %s."):format(data.postedBy, data.target, self:FormatMoney(self:ParseRewardCopper(data.note) or 0)))
         elseif data.status == "C" then
             self:Print(("%s claimed the bounty on |cffff5555%s|r!"):format(data.completedBy or "?", data.target))
         end
@@ -509,8 +513,8 @@ SlashCmdList.LAGOMLEDGER = function(input)
     elseif command == "professions" or command == "profs" then
         LL:ToggleUI("Professions")
     elseif command == "bounty" then
-        local name, note = argument:match("^(%S+)%s*(.-)$")
-        if name then LL:PostBounty(name, note) else LL:Print("Type /lagom bounty Name reason") end
+        local name, reward = argument:match("^(%S+)%s*(.-)$")
+        if name then LL:PostBounty(name, reward) else LL:Print("Type /lagom bounty Name reward (for example 12.34)") end
     elseif command == "debug" then
         LL:DebugReference()
     elseif command == "death" then
@@ -519,6 +523,8 @@ SlashCmdList.LAGOMLEDGER = function(input)
         LL:CompleteBounty(argument)
     elseif command == "casino" then
         LL:ToggleCasino()
+    elseif command == "balance" then
+        LL:ToggleUI("balance")
     elseif command == "reset" then
         LL:ResetBoardSize()
     elseif command == "settings" and LL.OpenEllesmereSettings then
@@ -527,7 +533,7 @@ SlashCmdList.LAGOMLEDGER = function(input)
         LL:RefreshLocalProfile()
         LL:SendLegacySnapshot()
     elseif command == "help" then
-        LL:Print("/lagom kills | deaths | bounties | professions | casino | reset | settings | sync | debug")
+        LL:Print("/lagom kills | deaths | bounties | professions | casino | balance | reset | settings | sync | debug")
     else
         LL:ToggleUI()
     end

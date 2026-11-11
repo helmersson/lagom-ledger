@@ -39,15 +39,15 @@ The **Kills** and **Deaths** tabs each add a centered top-three strip with the m
 
 Both PvP tabs include an **All time / Weekly** toggle. Weekly kills and deaths reset at the WoW server's weekly reset (Wednesday maintenance on this realm) and begin tracking when a member first uses this addon version.
 
-The board follows the Lagom layout: dedicated **Kills**, **Deaths**, **Bounties**, and **Professions** tabs, a draggable framed window and mouse-wheel scrolling. Kills are updated from the character's honorable-kill lifetime counter; deaths use the client's total-death statistic and the local death event.
+The board follows the Lagom layout: dedicated **Kills**, **Deaths**, **Bounties**, **Professions**, **Casino**, and **Balance sheet** tabs, a draggable framed window and mouse-wheel scrolling. Kills are updated from the character's honorable-kill lifetime counter; deaths use the client's total-death statistic and the local death event.
 
 Lagom Ledger also keeps its draggable minimap button: left-click opens the guild board and right-click opens the **Casino** tab. The casino shares the guild-board window and is also available from its navigation tab and `/lagom casino`. Drag the lower-right corner of the main window to resize it; the guild table, navigation buttons and casino leaderboard panels expand with the available space. The window is bounded by the current screen; select **Reset size** or run `/lagom reset` to restore the default size and centered position.
 
 ### Bounty board
 
-Enter an Alliance character name and an optional reason or reward. Online members of the current guild with the addon receive the bounty through guild addon messages. When a user logs in, the addon automatically requests the active bounty list.
+Enter an Alliance character name and a required **reward** as `gold.silver`, for example `12.34` for 12 gold and 34 silver. Online members of the current guild with the addon receive the bounty through guild addon messages. When a user logs in, the addon automatically requests the active bounty list.
 
-The board keeps manual completion: select a target and choose **Complete target**, or choose **Complete** on an active bounty row. The poster can choose **Remove**. When the addon sees a bounty target dead shortly after a new honorable-kill credit, it automatically completes matching bounties and announces nearby bounty targets once per minute.
+The board keeps manual completion: select a target and choose **Complete target**, or choose **Complete** on an active bounty row. The poster can choose **Remove**. When a bounty is claimed, its poster receives a matching outstanding debt to the claimant in **Balance sheet**, ready to prepare as a Blizzard mail. When the addon sees a bounty target dead shortly after a new honorable-kill credit, it automatically completes matching bounties and announces nearby bounty targets once per minute.
 
 ### Synchronization
 
@@ -66,7 +66,13 @@ The casino window runs guild games through the game's `/roll` system. It include
 - a personal balance showing recorded gold won, lost and net result
 - a history of the five latest completed games
 
-The host opens a lobby, guild members with the addon join it, and the host starts the selected game. A loser can settle an outstanding debt at a mailbox: select **Prepare mail** to fill in the recipient, subject and gold, use Blizzard's **Send** button, then select **Mark paid**. Lagom Ledger never sends mail automatically.
+The host opens a lobby, guild members with the addon join it, and the host starts the selected game. The casino balance is casino-only; bounty rewards do not change its won/lost lists.
+
+### Balance sheet
+
+**Balance sheet** records the current character's casino settlements and claimed bounty rewards. It shows gold won, gold lost and net change through the addon, plus a twelve-bar net-gold graph and a transaction list. Choose **Daily**, **Weekly**, or **Lifetime**: daily begins at midnight server time, weekly begins at the server's weekly reset, and lifetime retains every recorded transaction.
+
+Outstanding casino and bounty debts are paid from this tab. At a mailbox, select **Prepare mail** to fill in the recipient, subject and exact gold/silver amount, use Blizzard's **Send** button, then select **Mark paid**. Lagom Ledger never sends mail automatically.
 
 ### Update notices
 
@@ -78,10 +84,11 @@ At login, a member's profile includes the addon release number. During the initi
 | --- | --- |
 | `/lagom` | Open or close Lagom Ledger. |
 | `/lagom kills`, `/lagom deaths`, `/lagom bounties`, `/lagom professions` | Open a specific reference-style guild-board tab. |
-| `/lagom bounty Name reason` | Post a bounty from chat. |
+| `/lagom bounty Name 12.34` | Post a bounty with a 12 gold, 34 silver reward. |
 | `/lagom death` | Manually add a death. |
 | `/lagom complete ID` | Mark an active bounty as completed. Copy its ID from the board. |
 | `/lagom casino` | Open the Casino tab. |
+| `/lagom balance` | Open the Balance sheet tab. |
 | `/lagom reset` | Restore the main window's default size and centered position. |
 | `/lagom settings` | Open the Lagom Ledger section in EllesmereUI, when EllesmereUI is installed. |
 | `/lagom sync` | Send your profile and professions to other addon users in the guild. |
@@ -95,7 +102,7 @@ At login, a member's profile includes the addon release number. During the initi
 2. Enter a whole-number wager in gold, choose **Classic**, **Death Roll** or **Elimination**, then select **Open lobby**.
 3. Other guild members with Lagom Ledger select **Join**. The host selects **Start** after the player requirement is met.
 4. Use the game window's **Roll** button, or type the displayed native `/roll 1–maximum` command manually when it is your turn or the round requires your roll.
-5. At a mailbox, select **Prepare mail** to fill in the next debt, review it and use Blizzard's **Send** button. Then select **Mark paid** in Lagom Ledger so the next outstanding debt is shown.
+5. Open **Balance sheet** at a mailbox to settle the next casino or bounty debt: select **Prepare mail**, review and use Blizzard's **Send** button, then select **Mark paid** so the next outstanding debt is shown.
 
 Every entrant must have at least the wager available in their bags before they can host or join a game. The host can select **Close** to cancel an unfinished game.
 

@@ -198,14 +198,14 @@ function LL:BuildUI()
     recordsContent:SetAllPoints()
     self.recordsContent = recordsContent
 
-    local tabs = { "Kills", "Deaths", "Bounties", "Professions", "Casino" }
-    local tabIcons = { "Interface\\Icons\\Achievement_PVP_H_01", "Interface\\Icons\\Spell_Shadow_SoulLeech", "Interface\\Icons\\INV_Misc_Note_01", "Interface\\Icons\\INV_Misc_Book_09", "Interface\\Icons\\INV_Misc_Coin_01" }
+    local tabs = { "Kills", "Deaths", "Bounties", "Professions", "Casino", "Balance sheet" }
+    local tabIcons = { "Interface\\Icons\\Achievement_PVP_H_01", "Interface\\Icons\\Spell_Shadow_SoulLeech", "Interface\\Icons\\INV_Misc_Note_01", "Interface\\Icons\\INV_Misc_Book_09", "Interface\\Icons\\INV_Misc_Coin_01", "Interface\\Icons\\INV_Misc_Receipt_01" }
     currentTab, offset, tabButtons = 1, 0, {}
     for index, name in ipairs(tabs) do
         local button = makeNavigationButton(navigation, name, tabIcons[index])
         button:SetPoint("TOPLEFT", 9, -34 - (index - 1) * 44)
         button:SetScript("OnClick", function()
-            if name == "Casino" then LL:BuildCasinoUI() end
+            if name == "Casino" then LL:BuildCasinoUI() elseif name == "Balance sheet" then LL:BuildBalanceUI() end
             currentTab, offset = index, 0
             refreshBoard()
         end)
@@ -236,27 +236,27 @@ function LL:BuildUI()
     nameBox:SetPoint("LEFT", 45, 0)
     nameBox:SetAutoFocus(false)
     nameBox:SetMaxLetters(40)
-    local noteLabel = text(entry, 11, unpack(JOURNAL.muted))
-    noteLabel:SetPoint("LEFT", 166, 0)
-    noteLabel:SetText("Why")
-    local noteBox = CreateFrame("EditBox", nil, entry, "InputBoxTemplate")
-    noteBox:SetSize(180, 20)
-    noteBox:SetPoint("LEFT", 198, 0)
-    noteBox:SetAutoFocus(false)
-    noteBox:SetMaxLetters(60)
+    local rewardLabel = text(entry, 11, unpack(JOURNAL.muted))
+    rewardLabel:SetPoint("LEFT", 166, 0)
+    rewardLabel:SetText("Reward (g.ss)")
+    local rewardBox = CreateFrame("EditBox", nil, entry, "InputBoxTemplate")
+    rewardBox:SetSize(100, 20)
+    rewardBox:SetPoint("LEFT", 246, 0)
+    rewardBox:SetAutoFocus(false)
+    rewardBox:SetMaxLetters(12)
     local function postBounty()
-        if LL:PostBounty(nameBox:GetText(), noteBox:GetText()) then nameBox:SetText(""); noteBox:SetText("") end
-        nameBox:ClearFocus(); noteBox:ClearFocus()
+        if LL:PostBounty(nameBox:GetText(), rewardBox:GetText()) then nameBox:SetText(""); rewardBox:SetText("") end
+        nameBox:ClearFocus(); rewardBox:ClearFocus()
     end
     nameBox:SetScript("OnEnterPressed", postBounty)
-    noteBox:SetScript("OnEnterPressed", postBounty)
+    rewardBox:SetScript("OnEnterPressed", postBounty)
     nameBox:SetScript("OnEscapePressed", nameBox.ClearFocus)
-    noteBox:SetScript("OnEscapePressed", noteBox.ClearFocus)
+    rewardBox:SetScript("OnEscapePressed", rewardBox.ClearFocus)
     local post = makeButton(entry, "Post", 58, 22)
-    post:SetPoint("LEFT", 384, 0)
+    post:SetPoint("LEFT", 352, 0)
     post:SetScript("OnClick", postBounty)
     local target = makeButton(entry, "Use target", 92, 22)
-    target:SetPoint("LEFT", 447, 0)
+    target:SetPoint("LEFT", 416, 0)
     target:SetScript("OnClick", function()
         if UnitExists("target") and UnitIsPlayer("target") and UnitIsEnemy("player", "target") then
             local name = UnitName("target")
@@ -463,13 +463,13 @@ function LL:BuildUI()
             topThree:Hide()
             nemesisRow:Hide()
             setTableHeaderY(-55)
-            layout({ { "Wanted", 0, 104 }, { "Posted by", 110, 98 }, { "Why", 214, 205 }, { "Status", 425, 70 } })
+            layout({ { "Wanted", 0, 120 }, { "Posted by", 126, 112 }, { "Reward", 244, 92 }, { "Status", 342, 150 } })
             for index, bounty in ipairs(LL:Bounties()) do
                 local status = bounty.active and ("|cffff5555Open|r " .. ago(bounty.createdAt)) or (bounty.canceled and "|cff888888Removed|r" or "|cff55ff55" .. (bounty.completedBy or "?") .. "|r")
                 local action = bounty.active and { id = bounty.id, remove = LL:LegacyNamesMatch(bounty.postedBy, LL:PlayerName()) } or nil
-                data[index] = { cells = { bounty.active and ("|cffff5555" .. bounty.target .. "|r") or ("|cff888888" .. bounty.target .. "|r"), bounty.postedBy, bounty.note or "", status }, action = action }
+                data[index] = { cells = { bounty.active and ("|cffff5555" .. bounty.target .. "|r") or ("|cff888888" .. bounty.target .. "|r"), bounty.postedBy, LL:FormatMoney(bounty.rewardCopper), status }, action = action }
             end
-            footer:SetText("Bounties can be claimed automatically after a verified honorable kill, or completed manually.")
+            footer:SetText("Enter rewards as gold.silver (for example 12.34). Claimed rewards become a debt in Balance sheet.")
         else
             setRowHeight(50)
             topThree:Hide()
@@ -490,13 +490,18 @@ function LL:BuildUI()
     refreshBoard = function()
         if not board:IsShown() or not LL.db then return end
         for index, button in ipairs(tabButtons) do styleNavigationButton(button, index == currentTab) end
-        local isCasino = tabs[currentTab] == "Casino"
-        recordsContent:SetShown(not isCasino)
+        local isCasino, isBalance = tabs[currentTab] == "Casino", tabs[currentTab] == "Balance sheet"
+        recordsContent:SetShown(not isCasino and not isBalance)
         if LL.casinoFrame then LL.casinoFrame:SetShown(isCasino) end
+        if LL.balanceFrame then LL.balanceFrame:SetShown(isBalance) end
         local guildName = LL:GetGuildName()
-        subtitle:SetText(isCasino and "Guild casino" or (guildName and (guildName .. " guild journal") or "|cffff5555Join a guild to use this board.|r"))
+        subtitle:SetText(isCasino and "Guild casino" or (isBalance and "Guild balance sheet" or (guildName and (guildName .. " guild journal") or "|cffff5555Join a guild to use this board.|r")))
         if isCasino then
             LL:RefreshCasinoUI()
+            return
+        end
+        if isBalance then
+            LL:RefreshBalanceUI()
             return
         end
         entry:SetShown(tabs[currentTab] == "Bounties")
@@ -550,9 +555,10 @@ function LL:ResetBoardSize()
 end
 
 function LL:SetBoardPage(page)
-    local tabs = { leaderboard = 1, kills = 1, deaths = 2, bounty = 3, bounties = 3, professions = 4, profs = 4, casino = 5 }
+    local tabs = { leaderboard = 1, kills = 1, deaths = 2, bounty = 3, bounties = 3, professions = 4, profs = 4, casino = 5, balance = 6, balances = 6, balancesheet = 6 }
     currentTab, offset = tabs[strlower(page or "")] or 1, 0
     if currentTab == 5 then self:BuildCasinoUI() end
+    if currentTab == 6 then self:BuildBalanceUI() end
     self.selectedBoardPage = page
     self:RefreshUI()
 end
@@ -627,7 +633,7 @@ function LL:BuildCasinoUI()
     self.casinoFrame = frame
 
     local gamePanel = makePanel(frame)
-    gamePanel:SetPoint("TOPLEFT", 0, 0); gamePanel:SetPoint("TOPRIGHT", 0, 0); gamePanel:SetHeight(188)
+    gamePanel:SetPoint("TOPLEFT", 0, 0); gamePanel:SetPoint("TOPRIGHT", 0, 0); gamePanel:SetHeight(164)
     local gameTitle = text(gamePanel, 12, unpack(JOURNAL.title))
     gameTitle:SetPoint("TOPLEFT", 16, -13); gameTitle:SetText("GUILD GAME — CLASSIC, DEATH ROLL OR ELIMINATION")
     local balance = text(gamePanel, 11, unpack(JOURNAL.muted))
@@ -655,18 +661,12 @@ function LL:BuildCasinoUI()
     roll:SetPoint("LEFT", begin, "RIGHT", 8, 0); roll:SetScript("OnClick", function() LL:RollCasinoGame() end); self.casinoGameRoll = roll
     local cancel = makeButton(gamePanel, "Close", 64, 24)
     cancel:SetPoint("LEFT", roll, "RIGHT", 8, 0); cancel:SetScript("OnClick", function() LL:CloseCasinoGame() end); self.casinoGameClose = cancel
-    local prepareDebt = makeButton(gamePanel, "Prepare mail", 92, 24)
-    prepareDebt:SetPoint("LEFT", cancel, "RIGHT", 8, 0); prepareDebt:SetScript("OnClick", function() LL:PrepareCasinoDebtMail() end); self.casinoDebtPrepare = prepareDebt
-    local markDebtPaid = makeButton(gamePanel, "Mark paid", 82, 24)
-    markDebtPaid:SetPoint("LEFT", prepareDebt, "RIGHT", 8, 0); markDebtPaid:SetScript("OnClick", function() LL:MarkPreparedCasinoDebtPaid() end); self.casinoDebtMarkPaid = markDebtPaid
     local description = text(gamePanel, 11, unpack(JOURNAL.text))
     description:SetPoint("TOPLEFT", 18, -111); description:SetPoint("TOPRIGHT", -18, -111); description:SetJustifyH("LEFT"); description:SetWordWrap(true)
     self.casinoModeDescription = description
     updateMode()
     local state = text(gamePanel, 11, unpack(JOURNAL.muted))
     state:SetPoint("TOPLEFT", 18, -138); state:SetPoint("TOPRIGHT", -18, -138); state:SetJustifyH("LEFT"); self.casinoGroupState = state
-    local debtState = text(gamePanel, 11, unpack(JOURNAL.muted))
-    debtState:SetPoint("TOPLEFT", 18, -163); debtState:SetPoint("TOPRIGHT", -18, -163); debtState:SetJustifyH("LEFT"); self.casinoDebtState = debtState
 
     local historyPanel = makePanel(frame)
     historyPanel:SetPoint("BOTTOMLEFT", 0, 0); historyPanel:SetPoint("BOTTOMRIGHT", 0, 0); historyPanel:SetHeight(140)
@@ -675,8 +675,8 @@ function LL:BuildCasinoUI()
     local history = CreateFrame("ScrollingMessageFrame", nil, historyPanel)
     history:SetPoint("TOPLEFT", 16, -37); history:SetPoint("BOTTOMRIGHT", -16, 14); history:SetFontObject(GameFontHighlightSmall); history:SetJustifyH("LEFT"); history:SetFading(false); self.casinoHistoryText = history
     local results = CreateFrame("Frame", nil, frame)
-    results:SetPoint("TOPLEFT", 0, -200)
-    results:SetPoint("TOPRIGHT", 0, -200)
+    results:SetPoint("TOPLEFT", 0, -176)
+    results:SetPoint("TOPRIGHT", 0, -176)
     results:SetPoint("BOTTOMLEFT", historyPanel, "TOPLEFT", 0, 12)
     results:SetPoint("BOTTOMRIGHT", historyPanel, "TOPRIGHT", 0, 12)
     local winnersPanel = makePanel(results)
@@ -727,19 +727,100 @@ function LL:RefreshCasinoUI()
     self.casinoGameStart:SetEnabled(game and game.status == "lobby" and self:IsGroupCasinoHost(game))
     self.casinoGameRoll:SetEnabled(game and game.status == "running" and self:FindGroupPlayer(game, self:PlayerName()) ~= nil)
     self.casinoGameClose:SetEnabled(game and self:IsGroupCasinoHost(game))
-    local debt, debtCount = self:GetNextCasinoDebt()
-    self.casinoDebtPrepare:SetEnabled(debt ~= nil)
-    self.casinoDebtMarkPaid:SetEnabled(self.preparedCasinoDebtKey ~= nil)
-    if debt then
-        self.casinoDebtState:SetText("Outstanding debt: " .. debt.amount .. " gold to " .. debt.winner .. (debtCount > 1 and " (" .. debtCount .. " total)" or ""))
-    else
-        self.casinoDebtState:SetText("No outstanding casino debts.")
-    end
     if game then
         local mode = self:GetCasinoGameMode(game.mode)
         self.casinoGroupState:SetText((mode and mode.label or game.mode) .. " — " .. #game.players .. " player(s). " .. (game.message or (game.status == "lobby" and "Lobby is open." or "Game in progress.")))
     else
         self.casinoGroupState:SetText("No guild game is open.")
+    end
+end
+
+function LL:BuildBalanceUI()
+    if self.balanceFrame or not self.content then return end
+    local frame = CreateFrame("Frame", nil, self.content)
+    frame:SetAllPoints()
+    frame:Hide()
+    self.balanceFrame = frame
+    self.balanceScope = self.balanceScope or "lifetime"
+
+    local summary = text(frame, 12, unpack(JOURNAL.title))
+    summary:SetPoint("TOPLEFT", 14, -12)
+    self.balanceSummary = summary
+    local scopeButtons = {}
+    for index, scope in ipairs({ "lifetime", "weekly", "daily" }) do
+        local button = makeButton(frame, scope == "lifetime" and "Lifetime" or scope:gsub("^%l", string.upper), scope == "lifetime" and 72 or 60, 22)
+        button:SetPoint("TOPRIGHT", -14 - (#scopeButtons == 0 and 0 or (scopeButtons[#scopeButtons]:GetWidth() + 6)), -10)
+        button:SetScript("OnClick", function() LL.balanceScope = scope; LL:RefreshBalanceUI() end)
+        table.insert(scopeButtons, button)
+    end
+    self.balanceScopeButtons = scopeButtons
+
+    local graph = makePanel(frame)
+    graph:SetPoint("TOPLEFT", 0, -42); graph:SetPoint("TOPRIGHT", 0, -42); graph:SetHeight(134)
+    local graphTitle = text(graph, 11, unpack(JOURNAL.title))
+    graphTitle:SetPoint("TOPLEFT", 14, -11); graphTitle:SetText("NET GOLD BY PERIOD")
+    local baseline = graph:CreateTexture(nil, "ARTWORK")
+    baseline:SetColorTexture(unpack(JOURNAL.border)); baseline:SetHeight(1); baseline:SetPoint("LEFT", 14, 0); baseline:SetPoint("RIGHT", -14, 0); baseline:SetPoint("BOTTOM", 0, 61)
+    local bars = {}
+    for index = 1, 12 do
+        local bar = graph:CreateTexture(nil, "ARTWORK")
+        bar:SetColorTexture(0.33, 0.80, 0.33, 0.9)
+        bars[index] = bar
+    end
+    self.balanceGraph, self.balanceGraphBars = graph, bars
+
+    local transactions = makePanel(frame)
+    transactions:SetPoint("TOPLEFT", graph, "BOTTOMLEFT", 0, -12); transactions:SetPoint("BOTTOMRIGHT", 0, 0)
+    local transactionsTitle = text(transactions, 12, unpack(JOURNAL.title))
+    transactionsTitle:SetPoint("TOPLEFT", 14, -12); self.balanceTransactionsTitle = transactionsTitle
+    local prepareDebt = makeButton(transactions, "Prepare mail", 92, 22)
+    prepareDebt:SetPoint("TOPRIGHT", -104, -9); prepareDebt:SetScript("OnClick", function() LL:PrepareCasinoDebtMail() end); self.balanceDebtPrepare = prepareDebt
+    local markDebtPaid = makeButton(transactions, "Mark paid", 82, 22)
+    markDebtPaid:SetPoint("TOPRIGHT", -14, -9); markDebtPaid:SetScript("OnClick", function() LL:MarkPreparedCasinoDebtPaid() end); self.balanceDebtMarkPaid = markDebtPaid
+    local debtState = text(transactions, 10, unpack(JOURNAL.muted))
+    debtState:SetPoint("TOPLEFT", 16, -38); debtState:SetPoint("TOPRIGHT", -16, -38); self.balanceDebtState = debtState
+    local list = CreateFrame("ScrollingMessageFrame", nil, transactions)
+    list:SetPoint("TOPLEFT", 16, -58); list:SetPoint("BOTTOMRIGHT", -16, 14); list:SetFontObject(GameFontHighlightSmall); list:SetJustifyH("LEFT"); list:SetFading(false)
+    self.balanceTransactionsText = list
+end
+
+function LL:RefreshBalanceUI()
+    if not self.balanceFrame or not self.db then return end
+    local scope = self.balanceScope or "lifetime"
+    local won, lost, net, transactions = self:GetBalanceSummary(scope)
+    local color = net >= 0 and "|cff55dd55" or "|cffff5555"
+    self.balanceSummary:SetText("YOUR ADDON BALANCE  Won: " .. self:FormatMoney(won) .. "  Lost: " .. self:FormatMoney(lost) .. "  Net: " .. color .. (net > 0 and "+" or "") .. self:FormatMoney(math.abs(net)) .. "|r")
+    for _, button in ipairs(self.balanceScopeButtons) do button:SetEnabled(button:GetText():lower():gsub(" ", "") ~= scope) end
+
+    local values, maximum = self:GetBalanceGraph(scope), 0
+    for _, value in ipairs(values) do maximum = math.max(maximum, math.abs(value)) end
+    maximum = math.max(maximum, 1)
+    local width = math.max(12, math.floor((self.balanceGraph:GetWidth() - 28) / 12))
+    for index, bar in ipairs(self.balanceGraphBars) do
+        local value, height = values[index], math.max(2, math.floor(math.abs(values[index]) / maximum * 46))
+        bar:ClearAllPoints(); bar:SetWidth(math.max(2, width - 4)); bar:SetHeight(height)
+        if value >= 0 then bar:SetPoint("BOTTOMLEFT", self.balanceGraph, "BOTTOMLEFT", 14 + (index - 1) * width, 62); bar:SetColorTexture(0.33, 0.80, 0.33, 0.9)
+        else bar:SetPoint("TOPLEFT", self.balanceGraph, "BOTTOMLEFT", 14 + (index - 1) * width, 62); bar:SetColorTexture(0.90, 0.26, 0.22, 0.9) end
+    end
+
+    self.balanceTransactionsTitle:SetText("GOLD TRANSACTIONS — " .. scope:upper())
+    self.balanceTransactionsText:Clear()
+    if #transactions == 0 then self.balanceTransactionsText:AddMessage("No recorded gold transactions for this period.") end
+    for _, entry in ipairs(transactions) do
+        local transaction, received = entry.transaction, entry.delta > 0
+        local source = transaction.kind == "bounty" and ("Bounty: " .. (transaction.target or transaction.sourceId)) or "Casino"
+        local other = received and transaction.loser or transaction.winner
+        local status = transaction.paidAt and "|cff55dd55Paid|r" or "|cffffcc55Pending|r"
+        self.balanceTransactionsText:AddMessage(("%s  %s |cffffffff%s|r %s %s — %s"):format(ago(transaction.at), source,
+            (received and "+" or "-") .. self:FormatMoney(math.abs(entry.delta)), received and "from" or "to", other, status))
+    end
+    local debt, debtCount = self:GetNextCasinoDebt()
+    self.balanceDebtPrepare:SetEnabled(debt ~= nil)
+    self.balanceDebtMarkPaid:SetEnabled(self.preparedCasinoDebtKey ~= nil)
+    if debt then
+        self.balanceDebtState:SetText("Outstanding " .. debt.kind .. " debt: " .. self:FormatMoney(debt.amountCopper) .. " to " .. debt.winner .. (debtCount > 1 and " (" .. debtCount .. " total)" or ""))
+    else
+        self.balanceDebtState:SetText("No outstanding debts.")
     end
 end
 
