@@ -109,3 +109,16 @@ Guild addon messages are not a secure anti-cheat system. Treat the leaderboard a
 
 After making changes, run `/reload`, open `/lagom`, and test synchronization with at least one other guild member who also has the addon installed.
 
+## Releases
+
+GitHub Actions validates every pull request and push to `main`. Pushing an annotated tag named `v<version>` runs [BigWigsMods/packager](https://github.com/BigWigsMods/packager), verifies that the tag matches `## Version` in `LagomLedger/LagomLedger.toc`, packages the Forever addon, and creates a GitHub Release with the ZIP file.
+
+For example, after changing both release version fields to `1.6.1`:
+
+```text
+git tag -a v1.6.1 -m "Lagom Ledger 1.6.1"
+git push origin v1.6.1
+```
+
+No personal access token is required for GitHub Releases; the workflow uses its scoped `GITHUB_TOKEN`. See [the release-pipeline note](docs/plans/release-pipeline.md) for the full behavior.
+
