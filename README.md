@@ -2,6 +2,8 @@
 
 **Lagom Ledger** is a guild addon for *World of Warcraft Forever*. It gives the **OG Lagom** guild a shared PvP leaderboard and a bounty board for Alliance players.
 
+It is compatible with the supplied **Lagom** addon (v1.0.2): players can use either addon and share guild-board profiles and bounties. Lagom Ledger remains the single addon to install when casino, the minimap button and EllesmereUI integration are wanted.
+
 Only guild members who have the addon installed can open the interface or receive its synchronized data.
 
 When [EllesmereUI](https://github.com/EllesmereGaming/EllesmereUI) is installed, Lagom Ledger registers an **OG Lagom** section in its settings panel. This integration uses EllesmereUI's supported plugin API and does not change EllesmereUI's own files.
@@ -31,19 +33,21 @@ The leaderboard displays each addon user's:
 - recorded deaths
 - known professions
 
-Members are ranked by Alliance kills, then by fewer deaths when kills are tied. Professions are shown on their own dedicated page.
+The board follows the Lagom layout: dedicated **Kills**, **Deaths**, **Bounties**, and **Professions** tabs, a draggable framed window and mouse-wheel scrolling. Kills are updated from the character's honorable-kill lifetime counter; deaths use the client's total-death statistic and the local death event.
 
-The main board uses an EllesmereUI-inspired dark layout with separate **PvP Leaderboard**, **Professions**, and **Bounty Board** pages. It also adds a draggable minimap button: left-click opens the guild board and right-click opens the casino.
+Lagom Ledger also keeps its draggable minimap button: left-click opens the guild board and right-click opens the casino. The casino remains available from the board's **Casino** button and `/lagom casino`.
 
 ### Bounty board
 
 Enter an Alliance character name and an optional reason or reward. Online OG Lagom members with the addon receive the bounty through guild addon messages. When a user logs in, the addon automatically requests the active bounty list.
 
-Use **Complete selected target** to complete every active bounty that matches your currently selected target, or enter a board ID and choose **Complete**. Both actions synchronize the completion to other guild members with the addon.
+The board keeps manual completion: select a target and choose **Complete target**, or choose **Complete** on an active bounty row. The poster can choose **Remove**. When the addon sees a bounty target dead shortly after a new honorable-kill credit, it automatically completes matching bounties and announces nearby bounty targets once per minute.
 
 ### Synchronization
 
-The addon sends data only through the guild addon channel. It uses no external servers, accounts, or databases. Profiles synchronize on login, when professions change, and when **Sync my profile** is selected.
+The addon sends data only through the guild addon channel. It uses no external servers, accounts, or databases. Profiles synchronize on login, when professions change and when **Sync my profile** is selected.
+
+Lagom Ledger retains its own `LAGOMLEDGER` protocol for profiles, bounties and casino games. It also translates the reference addon's `LagomGuild` `S`, `B`, `H`, and `D` messages into the same `LagomLedgerDB` profiles and bounties. Casino messages are Ledger-only because the reference addon has no casino feature.
 
 ### Guild casino
 
@@ -66,12 +70,16 @@ At login, a member's profile includes the addon release number. When an online g
 | Command | Action |
 | --- | --- |
 | `/lagom` | Open or close Lagom Ledger. |
+| `/lagom kills`, `/lagom deaths`, `/lagom bounties`, `/lagom professions` | Open a specific reference-style guild-board tab. |
+| `/lagom bounty Name reason` | Post a bounty from chat. |
 | `/lagom death` | Manually add a death. |
 | `/lagom complete ID` | Mark an active bounty as completed. Copy its ID from the board. |
 | `/lagom casino` | Open the casino window. |
 | `/lagom settings` | Open the Lagom Ledger section in EllesmereUI, when EllesmereUI is installed. |
 | `/lagom sync` | Send your profile and professions to other addon users in the guild. |
+| `/lagom debug` | Show the guild and lifetime-stat information reported by the client. |
 | `/lagom help` | Show a short command list in chat. |
+| `/lagomledger` | Alias for Lagom Ledger when the reference addon also claims `/lagom`. |
 
 ## Playing a casino game
 
@@ -85,7 +93,7 @@ Every entrant must have at least the wager available in their bags before they c
 
 ## Important limitations
 
-WoW Forever does not expose every ordinary combat-log event to addons. Lagom Ledger therefore **cannot automatically verify or count PvP kills**, or complete bounties from a kill automatically. Complete a bounty from the board by selecting the target and choosing **Complete selected target**, or enter its ID and choose **Complete**.
+WoW Forever does not expose every ordinary combat-log event to addons. Lagom Ledger reads the client-reported honorable-kill total, but it cannot identify the player killed, the killer, or the zone. Automatic bounty completion is therefore a **best-effort** match: a tracked enemy bounty target must be observed dead shortly after a new honorable-kill credit. Use the manual bounty actions when that evidence is unavailable.
 
 Following the reference addon behavior, `PLAYER_DEAD` increases the local character's death total and synchronizes the updated profile to guild members with the addon. This includes deaths outside PvP. It does not send a separate death-chat message, because WoW Forever does not expose a reliable killer API. Use `/lagom death` only for additions or corrections, so that a death is not recorded twice.
 
@@ -96,6 +104,7 @@ Guild addon messages are not a secure anti-cheat system. Treat the leaderboard a
 - Target client: *World of Warcraft Forever*
 - Addon interface: `16001`
 - Main code: `LagomLedger/Core.lua`
+- Lagom compatibility: `LagomLedger/ReferenceCompatibility.lua`
 - Interface: `LagomLedger/UI.lua`
 
 After making changes, run `/reload`, open `/lagom`, and test synchronization with at least one other guild member who also has the addon installed.
