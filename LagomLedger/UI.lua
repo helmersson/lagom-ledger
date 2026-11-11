@@ -435,9 +435,13 @@ function LL:BuildUI()
             showTopThree(key, label, members)
             if tab == "Kills" then
                 nemesisRow:Hide()
-                layout({ { "#", 0, 26 }, { "Name", 32, 156 }, { "Level", 194, 40 }, { scoreHeader, 240, 150 }, { "Streak", 396, 94 } })
-                for index, member in ipairs(members) do data[index] = { cells = { index, coloredName(member.name, member.class), member.level > 0 and member.level or "", numberText(member[key]), numberText(member.killStreak) } } end
-                footer:SetText(leaderboardScope == "weekly" and "Counts honorable kills since the server's weekly reset." or "Counts lifetime honorable kills. Streak resets after an observed PvP death.")
+                layout({ { "#", 0, 22 }, { "Name", 28, 116 }, { "Level", 150, 35 }, { scoreHeader, 191, 50 }, { "Nemesis", 247, 130 }, { "Streak", 383, 80 } })
+                for index, member in ipairs(members) do
+                    local victim, victimKills = LL:TopPvpVictim(member.name)
+                    local victimText = victim and ("|cffff7777" .. LL:ShortName(victim) .. "|r (" .. numberText(victimKills) .. ")") or "-"
+                    data[index] = { cells = { index, coloredName(member.name, member.class), member.level > 0 and member.level or "", numberText(member[key]), victimText, numberText(member.killStreak) } }
+                end
+                footer:SetText(leaderboardScope == "weekly" and "Counts honorable kills since the server's weekly reset. Nemesis uses recorded PvP kills." or "Counts lifetime honorable kills. Nemesis uses recorded PvP kills; streak resets after an observed PvP death.")
             else
                 local guildNemesis, guildNemesisKills = LL:TopGuildNemesis()
                 nemesisRow.label:SetText(guildNemesis and ("GUILD NEMESIS — " .. LL:ShortName(guildNemesis) .. " (" .. numberText(guildNemesisKills) .. " recorded PvP deaths)") or "GUILD NEMESIS — No recorded PvP deaths yet")

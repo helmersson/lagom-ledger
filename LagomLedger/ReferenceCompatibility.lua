@@ -362,11 +362,19 @@ function LL:ScanReferenceUnit(unit)
     if UnitIsDeadOrGhost(unit) then
         self.referenceRecentDeaths = self.referenceRecentDeaths or {}
         self.referenceRecentDeaths[fold(shortName(name))] = GetTime()
+        if unit == "target" or unit == "mouseover" then self:RecordObservedPvpKill(name) end
         self:TryReferenceBountyCompletion()
     else
         local bounty = self:OpenReferenceBountyFor(name)
         if bounty then self:AlertReferenceBounty(bounty) end
     end
+end
+
+function LL:RecordObservedPvpKill(name)
+    if not self.referenceKillCredit or GetTime() - self.referenceKillCredit > 12 or self.referenceKillVictimAt == self.referenceKillCredit then return end
+    -- shortcut: one observed target per honorable-kill credit; use a combat-log killer API if Forever exposes one.
+    self.referenceKillVictimAt = self.referenceKillCredit
+    self:AnnouncePvpKill(name)
 end
 
 function LL:RecordReferenceKillCredit()
@@ -441,7 +449,7 @@ end
 function handlers.PLAYER_GUILD_UPDATE(unit)
     if unit ~= "player" then return end
     LL.legacyOutKeys, LL.legacyOutMessages = nil, nil
-    LL.referenceRecentDeaths, LL.referenceKillCredit = nil, nil
+    LL.referenceRecentDeaths, LL.referenceKillCredit, LL.referenceKillVictimAt = nil, nil, nil
     LL:RefreshLocalProfile()
 end
 

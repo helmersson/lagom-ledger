@@ -150,6 +150,7 @@ function LL:InitializeGuildDatabase(db)
     db.nextCasinoId = db.nextCasinoId or 1
     db.casinoSettlements = db.casinoSettlements or {}
     db.nemeses = db.nemeses or {}
+    db.vanquished = db.vanquished or {}
     db.minimap = db.minimap or { angle = 225 }
 end
 
@@ -278,6 +279,8 @@ function LL:Serialize(kind, payload)
         return table.concat({ self:Escape(payload.name), payload.level or 0 }, ";")
     elseif kind == "UPDATE_AVAILABLE" then
         return table.concat({ self:Escape(payload.target), self:Escape(payload.release) }, ";")
+    elseif kind == "PVP_KILL" then
+        return table.concat({ self:Escape(payload.killer), self:Escape(payload.victim) }, ";")
     elseif kind == "PVP_DEATH" then
         return table.concat({ self:Escape(payload.victim), self:Escape(payload.killer) }, ";")
     elseif kind == "BOUNTY_ADD" then
@@ -318,6 +321,8 @@ function LL:Decode(message)
         return kind, { name = self:Unescape(fields[1]), level = tonumber(fields[2]) }
     elseif kind == "UPDATE_AVAILABLE" then
         return kind, { target = self:Unescape(fields[1]), release = self:Unescape(fields[2]) }
+    elseif kind == "PVP_KILL" then
+        return kind, { killer = self:Unescape(fields[1]), victim = self:Unescape(fields[2]) }
     elseif kind == "PVP_DEATH" then
         return kind, { victim = self:Unescape(fields[1]), killer = self:Unescape(fields[2]) }
     elseif kind == "BOUNTY_ADD" then
@@ -387,6 +392,29 @@ function LL:TopGuildNemesis()
         if not kills or count > kills or (count == kills and killer < nemesis) then nemesis, kills = killer, count end
     end
     return nemesis, kills
+end
+
+function LL:RecordPvpKill(killer, victim)
+    if not self.db or type(victim) ~= "string" or victim == "" then return end
+    local killerKey = self:PlayerIdentityKey(killer)
+    if killerKey == "" then return end
+    self.db.vanquished[killerKey] = self.db.vanquished[killerKey] or {}
+    self.db.vanquished[killerKey][victim] = (self.db.vanquished[killerKey][victim] or 0) + 1
+end
+
+function LL:TopPvpVictim(killer)
+    local victim, kills
+    for name, count in pairs((self.db and self.db.vanquished[self:PlayerIdentityKey(killer)]) or {}) do
+        if not kills or count > kills or (count == kills and name < victim) then victim, kills = name, count end
+    end
+    return victim, kills
+end
+
+function LL:AnnouncePvpKill(victim)
+    if not self.db or type(victim) ~= "string" or victim == "" then return end
+    local payload = { killer = self:PlayerName(), victim = victim }
+    self:RecordPvpKill(payload.killer, payload.victim)
+    self:Broadcast("PVP_KILL", payload)
 end
 
 function LL:AnnouncePvpDeath(lastOpponent)
@@ -535,6 +563,8 @@ function LL:OnComm(prefix, message, channel, sender)
             self.versionNoticeSent[noticeKey] = true
             self:Print("Update available: Lagom Ledger " .. payload.release .. " is available.")
         end
+    elseif kind == "PVP_KILL" and payload.killer and payload.victim then
+        self:RecordPvpKill(payload.killer, payload.victim)
     elseif kind == "PVP_DEATH" and payload.victim then
         self:RecordNemesisDeath(payload.victim, payload.killer)
         local message = payload.victim .. " died in PvP"

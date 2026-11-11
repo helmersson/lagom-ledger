@@ -31,6 +31,7 @@ The leaderboard displays each addon user's:
 
 - recorded Alliance kills
 - current honorable-kill streak
+- most-recorded PvP kill target (**Nemesis**) on the Kills tab
 - recorded deaths, current life duration and longest completed life
 - known professions
 
@@ -102,7 +103,7 @@ Every entrant must have at least the wager available in their bags before they c
 
 WoW Forever does not expose every ordinary combat-log event to addons. Lagom Ledger reads the client-reported honorable-kill total, but it cannot identify the player killed, the killer, or the zone. Automatic bounty completion is therefore a **best-effort** match: a tracked enemy bounty target must be observed dead shortly after a new honorable-kill credit. Use the manual bounty actions when that evidence is unavailable.
 
-Following the reference addon behavior, `PLAYER_DEAD` increases the local character's death total and synchronizes the updated profile to guild members with the addon. This includes deaths outside PvP. The addon records the current life from the last observed death or resurrection and preserves the longest completed life. An honorable-kill streak increases from the client's lifetime honorable-kill counter and resets only after a best-effort observed PvP death: the local client must have recently entered combat while targeting a hostile player. On such a death, addon users receive an internal PvP-death notice and the last observed hostile target is counted as that member's nemesis; the Deaths page also aggregates those records into a guild nemesis. WoW Forever does not expose a reliable victim/killer API, so the named killer is a hint rather than verified attribution, and unobserved PvP deaths cannot safely reset a streak. Use `/lagom death` only for additions or corrections, so that a death is not recorded twice.
+Following the reference addon behavior, `PLAYER_DEAD` increases the local character's death total and synchronizes the updated profile to guild members with the addon. This includes deaths outside PvP. The addon records the current life from the last observed death or resurrection and preserves the longest completed life. An honorable-kill streak increases from the client's lifetime honorable-kill counter and resets only after a best-effort observed PvP death: the local client must have recently entered combat while targeting a hostile player. On such a death, addon users receive an internal PvP-death notice and the last observed hostile target is counted as that member's nemesis; the Deaths page also aggregates those records into a guild nemesis. Honorable-kill credits similarly record at most one observed dead hostile target as the killer's Nemesis on the Kills page. WoW Forever does not expose a reliable victim/killer API, so named killers and victims are hints rather than verified attribution, and unobserved PvP deaths cannot safely reset a streak. Use `/lagom death` only for additions or corrections, so that a death is not recorded twice.
 
 Guild addon messages are not a secure anti-cheat system. Treat the leaderboard as a shared guild honor board, not as authoritative statistics from the game server.
 
