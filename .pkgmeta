@@ -1,0 +1,11 @@
+package-as: LagomLedger
+
+move-folders:
+  LagomLedger/LagomLedger: LagomLedger
+
+ignore:
+  - .github
+  - docs
+  - tests
+  - README.md
+
