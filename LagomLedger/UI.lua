@@ -1,342 +1,273 @@
 local _, LL = ...
 
-local function makeButton(parent, text, width, height)
+local W, H, ROWS, ROW_H = 600, 470, 15, 22
+local FONT = "Fonts\\FRIZQT__.TTF"
+local board, currentTab, offset, tabButtons, rows, entry, footer, refreshBoard
+
+local function makeButton(parent, label, width, height)
     local button = CreateFrame("Button", nil, parent, "UIPanelButtonTemplate")
     button:SetSize(width, height)
-    button:SetText(text)
+    button:SetText(label)
     return button
 end
 
-local colors = {
-    background = { 0.035, 0.045, 0.065, 0.98 },
-    surface = { 0.065, 0.080, 0.110, 0.98 },
-    hover = { 0.095, 0.115, 0.150, 0.98 },
-    border = { 0.155, 0.195, 0.260, 1 },
-    accent = { 0.180, 0.690, 0.950, 1 },
-    text = { 0.880, 0.920, 0.970, 1 },
-    muted = { 0.510, 0.610, 0.710, 1 },
-}
-
-local function makeSurface(parent)
-    local surface = CreateFrame("Frame", nil, parent, "BackdropTemplate")
-    surface:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8x8", edgeFile = "Interface\\Buttons\\WHITE8x8", edgeSize = 1 })
-    surface:SetBackdropColor(unpack(colors.surface))
-    surface:SetBackdropBorderColor(unpack(colors.border))
-    return surface
+local function text(parent, size, red, green, blue)
+    local label = parent:CreateFontString(nil, "OVERLAY")
+    label:SetFont(FONT, size, "")
+    label:SetShadowColor(0, 0, 0, 1)
+    label:SetShadowOffset(1, -1)
+    label:SetTextColor(red or 1, green or 1, blue or 1)
+    label:SetJustifyH("LEFT")
+    label:SetWordWrap(false)
+    return label
 end
 
-local function makeActionButton(parent, text, width, callback)
-    local button = CreateFrame("Button", nil, parent, "BackdropTemplate")
-    button:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8x8", edgeFile = "Interface\\Buttons\\WHITE8x8", edgeSize = 1 })
-    button:SetBackdropColor(unpack(colors.surface))
-    button:SetBackdropBorderColor(unpack(colors.border))
-    button:SetSize(width, 28)
-    local label = button:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    label:SetPoint("CENTER")
-    label:SetText(text)
-    label:SetTextColor(unpack(colors.text))
-    button:SetScript("OnClick", callback)
-    button:SetScript("OnEnter", function(self)
-        self:SetBackdropColor(unpack(colors.hover))
-        self:SetBackdropBorderColor(unpack(colors.accent))
-    end)
-    button:SetScript("OnLeave", function(self)
-        self:SetBackdropColor(unpack(colors.surface))
-        self:SetBackdropBorderColor(unpack(colors.border))
-    end)
-    return button
+local function coloredName(name, class)
+    local color = class and RAID_CLASS_COLORS and RAID_CLASS_COLORS[class]
+    return color and color.colorStr and "|c" .. color.colorStr .. name .. "|r" or name
 end
 
-local function makeNavigationButton(parent, text)
-    local button = CreateFrame("Button", nil, parent, "BackdropTemplate")
-    button:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8x8", edgeFile = "Interface\\Buttons\\WHITE8x8", edgeSize = 1 })
-    button:SetBackdropColor(unpack(colors.surface))
-    button:SetBackdropBorderColor(unpack(colors.border))
-    button:SetSize(140, 34)
-    button.label = button:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    button.label:SetPoint("LEFT", 12, 0)
-    button.label:SetText(text)
-    function button:SetActive(active)
-        self.active = active
-        self:SetBackdropColor(unpack(active and colors.hover or colors.surface))
-        self:SetBackdropBorderColor(unpack(active and colors.accent or colors.border))
-        self.label:SetTextColor(unpack(active and colors.text or colors.muted))
+local function formatProfessions(value)
+    local output = {}
+    for name, rank in (value or ""):gmatch("([^,:]+):(%d+)") do
+        table.insert(output, name .. " |cffaaaaaa" .. rank .. "|r")
     end
-    button:SetScript("OnEnter", function(self)
-        if not self.active then
-            self:SetBackdropColor(unpack(colors.hover))
-            self.label:SetTextColor(unpack(colors.text))
-        end
-    end)
-    button:SetScript("OnLeave", function(self)
-        if not self.active then
-            self:SetBackdropColor(unpack(colors.surface))
-            self.label:SetTextColor(unpack(colors.muted))
-        end
-    end)
-    return button
+    return #output > 0 and table.concat(output, ", ") or "|cff666666-|r"
 end
 
-local function makeInput(parent, width)
-    local input = CreateFrame("EditBox", nil, parent, "BackdropTemplate")
-    input:SetSize(width, 28)
-    input:SetAutoFocus(false)
-    input:SetFontObject(GameFontHighlightSmall)
-    input:SetTextColor(unpack(colors.text))
-    input:SetTextInsets(9, 9, 0, 0)
-    input:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8x8", edgeFile = "Interface\\Buttons\\WHITE8x8", edgeSize = 1 })
-    input:SetBackdropColor(0.025, 0.035, 0.050, 1)
-    input:SetBackdropBorderColor(unpack(colors.border))
-    input:SetScript("OnEditFocusGained", function(self) self:SetBackdropBorderColor(unpack(colors.accent)) end)
-    input:SetScript("OnEditFocusLost", function(self) self:SetBackdropBorderColor(unpack(colors.border)) end)
-    return input
+local function ago(timestamp)
+    local elapsed = (GetServerTime and GetServerTime() or time()) - (timestamp or 0)
+    if elapsed < 3600 then return math.max(1, math.floor(elapsed / 60)) .. "m" end
+    if elapsed < 86400 then return math.floor(elapsed / 3600) .. "h" end
+    return math.floor(elapsed / 86400) .. "d"
 end
 
-local function makePageHeading(parent, title, subtitle)
-    local heading = parent:CreateFontString(nil, "OVERLAY", "GameFontHighlightLarge")
-    heading:SetPoint("TOPLEFT", 18, -18)
-    heading:SetText(title)
-    heading:SetTextColor(unpack(colors.text))
-    local subheading = parent:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    subheading:SetPoint("TOPLEFT", heading, "BOTTOMLEFT", 0, -5)
-    subheading:SetText(subtitle)
-    subheading:SetTextColor(unpack(colors.muted))
-end
-
-local function makeList(parent)
-    local card = makeSurface(parent)
-    local list = CreateFrame("ScrollingMessageFrame", nil, card)
-    list:SetPoint("TOPLEFT", 14, -14)
-    list:SetPoint("BOTTOMRIGHT", -14, 14)
-    list:SetFontObject(GameFontHighlightSmall)
-    list:SetJustifyH("LEFT")
-    list:SetFading(false)
-    return card, list
+local function numberText(value)
+    return BreakUpLargeNumbers and BreakUpLargeNumbers(value) or tostring(value)
 end
 
 function LL:BuildUI()
-    if self.frame then return end
-    local frame = CreateFrame("Frame", "LagomLedgerFrame", UIParent, "BackdropTemplate")
-    frame:SetSize(805, 560)
-    frame:SetPoint("CENTER")
-    frame:SetMovable(true)
-    frame:EnableMouse(true)
-    frame:RegisterForDrag("LeftButton")
-    frame:SetScript("OnDragStart", frame.StartMoving)
-    frame:SetScript("OnDragStop", frame.StopMovingOrSizing)
-    frame:SetFrameStrata("DIALOG")
-    frame:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8x8", edgeFile = "Interface\\Buttons\\WHITE8x8", edgeSize = 1 })
-    frame:SetBackdropColor(unpack(colors.background))
-    frame:SetBackdropBorderColor(unpack(colors.border))
-    frame:Hide()
-    self.frame = frame
+    if board then self.frame = board; return end
+    board = CreateFrame("Frame", "LagomLedgerFrame", UIParent, "BackdropTemplate")
+    board:SetSize(W, H)
+    board:SetPoint("CENTER")
+    board:SetFrameStrata("HIGH")
+    board:SetClampedToScreen(true)
+    board:SetMovable(true)
+    board:EnableMouse(true)
+    board:EnableMouseWheel(true)
+    board:RegisterForDrag("LeftButton")
+    board:SetScript("OnDragStart", board.StartMoving)
+    board:SetScript("OnDragStop", board.StopMovingOrSizing)
+    board:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8x8", edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Border", edgeSize = 28, insets = { left = 8, right = 8, top = 8, bottom = 8 } })
+    board:SetBackdropColor(0.06, 0.05, 0.05, 0.96)
+    board:Hide()
+    table.insert(UISpecialFrames, "LagomLedgerFrame")
+    self.frame = board
 
-    local header = makeSurface(frame)
-    header:SetPoint("TOPLEFT", 10, -10)
-    header:SetPoint("TOPRIGHT", -10, -10)
-    header:SetHeight(60)
-    header:SetBackdropColor(0.050, 0.065, 0.090, 1)
-    local accent = header:CreateTexture(nil, "ARTWORK")
-    accent:SetTexture("Interface\\Buttons\\WHITE8x8")
-    accent:SetVertexColor(unpack(colors.accent))
-    accent:SetPoint("TOPLEFT", 16, -16)
-    accent:SetSize(4, 28)
-
-    local title = header:CreateFontString(nil, "OVERLAY", "GameFontHighlightLarge")
-    title:SetPoint("TOPLEFT", 32, -14)
+    local title = text(board, 18, 1, 0.82, 0.2)
+    title:SetPoint("TOPLEFT", 20, -16)
     title:SetText("Lagom Ledger")
-    title:SetTextColor(unpack(colors.text))
-    local subtitle = header:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    subtitle:SetPoint("TOPLEFT", title, "BOTTOMLEFT", 0, -4)
-    subtitle:SetText("OG Lagom • guild-only shared data")
-    subtitle:SetTextColor(unpack(colors.muted))
+    local subtitle = text(board, 11, 0.7, 0.7, 0.7)
+    subtitle:SetPoint("LEFT", title, "RIGHT", 10, -1)
+    subtitle:SetText("OG Lagom guild board")
+    self.boardSubtitle = subtitle
+    local close = CreateFrame("Button", nil, board, "UIPanelCloseButton")
+    close:SetPoint("TOPRIGHT", -4, -4)
+    local casino = makeButton(board, "Casino", 66, 22)
+    casino:SetPoint("RIGHT", close, "LEFT", -3, -1)
+    casino:SetScript("OnClick", function() LL:ToggleCasino() end)
 
-    local close = makeActionButton(header, "Close", 60, function() frame:Hide() end)
-    close:SetPoint("RIGHT", header, "RIGHT", -12, 0)
-    local settings = makeActionButton(header, "EUI", 50, function() LL:OpenEllesmereSettings() end)
-    settings:SetPoint("RIGHT", close, "LEFT", -6, 0)
-    local casino = makeActionButton(header, "Casino", 70, function() LL:ToggleCasino() end)
-    casino:SetPoint("RIGHT", settings, "LEFT", -6, 0)
-    local sync = makeActionButton(header, "Sync", 60, function() LL:RefreshLocalProfile() end)
-    sync:SetPoint("RIGHT", casino, "LEFT", -6, 0)
+    local tabs = { "Kills", "Deaths", "Bounties", "Professions" }
+    currentTab, offset, tabButtons = 1, 0, {}
+    for index, name in ipairs(tabs) do
+        local button = makeButton(board, name, 110, 24)
+        button:SetPoint("TOPLEFT", 18 + (index - 1) * 114, -44)
+        button:SetScript("OnClick", function() currentTab, offset = index, 0; refreshBoard() end)
+        tabButtons[index] = button
+    end
 
-    local sidebar = makeSurface(frame)
-    sidebar:SetPoint("TOPLEFT", 10, -80)
-    sidebar:SetPoint("BOTTOMLEFT", 10, 10)
-    sidebar:SetWidth(156)
-    local navigation = sidebar:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    navigation:SetPoint("TOPLEFT", 10, -14)
-    navigation:SetText("NAVIGATION")
-    navigation:SetTextColor(unpack(colors.muted))
-    local guildLabel = sidebar:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    guildLabel:SetPoint("BOTTOMLEFT", 10, 14)
-    guildLabel:SetText("OG LAGOM")
-    guildLabel:SetTextColor(unpack(colors.accent))
-
-    local content = makeSurface(frame)
-    content:SetPoint("TOPLEFT", 176, -80)
-    content:SetPoint("BOTTOMRIGHT", -10, 10)
-    content:SetBackdropColor(0.045, 0.060, 0.085, 1)
-
-    local leaderboardPage = CreateFrame("Frame", nil, content)
-    leaderboardPage:SetAllPoints()
-    local professionsPage = CreateFrame("Frame", nil, content)
-    professionsPage:SetAllPoints()
-    local bountyPage = CreateFrame("Frame", nil, content)
-    bountyPage:SetAllPoints()
-    self.leaderboardPage = leaderboardPage
-    self.professionsPage = professionsPage
-    self.bountyPage = bountyPage
-
-    local leaderboardTab = makeNavigationButton(sidebar, "PvP Leaderboard")
-    leaderboardTab:SetPoint("TOPLEFT", 8, -42)
-    local professionsTab = makeNavigationButton(sidebar, "Professions")
-    professionsTab:SetPoint("TOPLEFT", leaderboardTab, "BOTTOMLEFT", 0, -6)
-    local bountyTab = makeNavigationButton(sidebar, "Bounty Board")
-    bountyTab:SetPoint("TOPLEFT", professionsTab, "BOTTOMLEFT", 0, -6)
-    self.leaderboardTab = leaderboardTab
-    self.professionsTab = professionsTab
-    self.bountyTab = bountyTab
-
-    makePageHeading(leaderboardPage, "PvP Leaderboard", "Alliance kills and deaths across the guild")
-    self.leaderboardSummary = leaderboardPage:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    self.leaderboardSummary:SetPoint("TOPRIGHT", -18, -25)
-    self.leaderboardSummary:SetTextColor(unpack(colors.muted))
-    local leaderboardHeader = leaderboardPage:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    leaderboardHeader:SetPoint("TOPLEFT", 22, -78)
-    leaderboardHeader:SetText("RANK     MEMBER                              KILLS     DEATHS")
-    leaderboardHeader:SetTextColor(unpack(colors.accent))
-    local leaderboardCard, leaderboardList = makeList(leaderboardPage)
-    leaderboardCard:SetPoint("TOPLEFT", 16, -102)
-    leaderboardCard:SetPoint("BOTTOMRIGHT", -16, 16)
-    self.leaderboardText = leaderboardList
-
-    makePageHeading(professionsPage, "Professions", "Known professions shared by guild members")
-    self.professionSummary = professionsPage:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    self.professionSummary:SetPoint("TOPRIGHT", -18, -25)
-    self.professionSummary:SetTextColor(unpack(colors.muted))
-    local professionHeader = professionsPage:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    professionHeader:SetPoint("TOPLEFT", 22, -78)
-    professionHeader:SetText("MEMBER                                      PROFESSIONS")
-    professionHeader:SetTextColor(unpack(colors.accent))
-    local professionsCard, professionsList = makeList(professionsPage)
-    professionsCard:SetPoint("TOPLEFT", 16, -102)
-    professionsCard:SetPoint("BOTTOMRIGHT", -16, 16)
-    self.professionText = professionsList
-
-    makePageHeading(bountyPage, "Bounty Board", "Post and complete Alliance bounties")
-    local postPanel = makeSurface(bountyPage)
-    postPanel:SetPoint("TOPLEFT", 16, -76)
-    postPanel:SetPoint("TOPRIGHT", -16, -76)
-    postPanel:SetHeight(108)
-    local postLabel = postPanel:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    postLabel:SetPoint("TOPLEFT", 14, -12)
-    postLabel:SetText("POST A NEW BOUNTY")
-    postLabel:SetTextColor(unpack(colors.accent))
-    local targetLabel = postPanel:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    targetLabel:SetPoint("TOPLEFT", 14, -37)
-    targetLabel:SetText("Alliance character")
-    targetLabel:SetTextColor(unpack(colors.muted))
-    local target = makeInput(postPanel, 170)
-    target:SetPoint("TOPLEFT", 14, -55)
-    self.bountyTarget = target
-    local noteLabel = postPanel:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    noteLabel:SetPoint("TOPLEFT", targetLabel, "TOPRIGHT", 14, 0)
-    noteLabel:SetText("Reason or reward (optional)")
-    noteLabel:SetTextColor(unpack(colors.muted))
-    local note = makeInput(postPanel, 228)
-    note:SetPoint("LEFT", target, "RIGHT", 10, 0)
-    self.bountyNote = note
-    local post = makeActionButton(postPanel, "Post bounty", 100, function()
-        if LL:AddBounty(target:GetText(), note:GetText()) then target:SetText(""); note:SetText("") end
+    entry = CreateFrame("Frame", nil, board)
+    entry:SetPoint("TOPLEFT", 18, -76)
+    entry:SetSize(W - 36, 26)
+    local nameLabel = text(entry, 11, 0.8, 0.8, 0.8)
+    nameLabel:SetPoint("LEFT", 0, 0)
+    nameLabel:SetText("Player")
+    local nameBox = CreateFrame("EditBox", nil, entry, "InputBoxTemplate")
+    nameBox:SetSize(110, 20)
+    nameBox:SetPoint("LEFT", 46, 0)
+    nameBox:SetAutoFocus(false)
+    nameBox:SetMaxLetters(40)
+    local noteLabel = text(entry, 11, 0.8, 0.8, 0.8)
+    noteLabel:SetPoint("LEFT", 166, 0)
+    noteLabel:SetText("Why")
+    local noteBox = CreateFrame("EditBox", nil, entry, "InputBoxTemplate")
+    noteBox:SetSize(190, 20)
+    noteBox:SetPoint("LEFT", 196, 0)
+    noteBox:SetAutoFocus(false)
+    noteBox:SetMaxLetters(60)
+    local function postBounty()
+        if LL:PostBounty(nameBox:GetText(), noteBox:GetText()) then nameBox:SetText(""); noteBox:SetText("") end
+        nameBox:ClearFocus()
+        noteBox:ClearFocus()
+    end
+    nameBox:SetScript("OnEnterPressed", postBounty)
+    noteBox:SetScript("OnEnterPressed", postBounty)
+    nameBox:SetScript("OnEscapePressed", nameBox.ClearFocus)
+    noteBox:SetScript("OnEscapePressed", noteBox.ClearFocus)
+    local post = makeButton(entry, "Post", 70, 22)
+    post:SetPoint("LEFT", 394, 0)
+    post:SetScript("OnClick", postBounty)
+    local target = makeButton(entry, "Use target", 96, 22)
+    target:SetPoint("LEFT", 468, 0)
+    target:SetScript("OnClick", function()
+        if UnitExists("target") and UnitIsPlayer("target") and UnitIsEnemy("player", "target") then
+            local name = UnitName("target")
+            if type(name) == "string" and not (issecretvalue and issecretvalue(name)) then nameBox:SetText(name); return end
+        end
+        LL:Print("Target an enemy player first.")
     end)
-    post:SetPoint("LEFT", note, "RIGHT", 10, 0)
 
-    local activeLabel = bountyPage:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    activeLabel:SetPoint("TOPLEFT", 18, -198)
-    activeLabel:SetText("ACTIVE BOUNTIES")
-    activeLabel:SetTextColor(unpack(colors.accent))
-    self.bountySummary = bountyPage:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    self.bountySummary:SetPoint("TOPRIGHT", -18, -198)
-    self.bountySummary:SetTextColor(unpack(colors.muted))
-    local bountyCard, bountyList = makeList(bountyPage)
-    bountyCard:SetPoint("TOPLEFT", 16, -220)
-    bountyCard:SetPoint("BOTTOMRIGHT", -16, 58)
-    self.bountyText = bountyList
+    local columns, header, headerY = 5, {}, -108
+    for column = 1, columns do header[column] = text(board, 11, 1, 0.82, 0.2) end
+    local line = board:CreateTexture(nil, "ARTWORK")
+    line:SetColorTexture(1, 0.82, 0.2, 0.4)
+    line:SetHeight(1)
+    line:SetPoint("TOPLEFT", 18, headerY - 16)
+    line:SetPoint("TOPRIGHT", -18, headerY - 16)
+    rows = {}
+    for index = 1, ROWS do
+        local row = CreateFrame("Frame", nil, board)
+        row:SetSize(W - 36, ROW_H)
+        row:SetPoint("TOPLEFT", 18, headerY - 20 - (index - 1) * ROW_H)
+        if index % 2 == 0 then
+            local stripe = row:CreateTexture(nil, "BACKGROUND")
+            stripe:SetAllPoints()
+            stripe:SetColorTexture(1, 1, 1, 0.04)
+        end
+        row.cells = {}
+        for column = 1, columns do row.cells[column] = text(row, 12) end
+        row.action = makeButton(row, "", 70, 18)
+        row.action:SetPoint("RIGHT", 0, 0)
+        row.action:Hide()
+        rows[index] = row
+    end
+    footer = text(board, 11, 0.6, 0.6, 0.6)
+    footer:SetPoint("BOTTOMLEFT", 20, 16)
+    local completeTarget = makeButton(board, "Complete target", 120, 22)
+    completeTarget:SetPoint("BOTTOMRIGHT", -20, 12)
+    completeTarget:SetScript("OnClick", function() LL:CompleteSelectedBounties() end)
 
-    local completeSelected = makeActionButton(bountyPage, "Complete selected target", 176, function() LL:CompleteSelectedBounties() end)
-    completeSelected:SetPoint("BOTTOMLEFT", 16, 16)
-    local completeId = makeInput(bountyPage, 180)
-    completeId:SetPoint("LEFT", completeSelected, "RIGHT", 12, 0)
-    self.completeBountyId = completeId
-    local completeIdLabel = bountyPage:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    completeIdLabel:SetPoint("BOTTOMLEFT", completeId, "TOPLEFT", 0, 4)
-    completeIdLabel:SetText("Bounty ID")
-    completeIdLabel:SetTextColor(unpack(colors.muted))
-    local completeById = makeActionButton(bountyPage, "Complete", 82, function()
-        if LL:CompleteBounty(completeId:GetText()) then completeId:SetText("") end
-    end)
-    completeById:SetPoint("LEFT", completeId, "RIGHT", 10, 0)
+    local function layout(definitions)
+        for column = 1, columns do
+            local definition = definitions[column]
+            header[column]:SetShown(definition ~= nil)
+            if definition then
+                header[column]:ClearAllPoints()
+                header[column]:SetPoint("TOPLEFT", 18 + definition[2], headerY)
+                header[column]:SetText(definition[1])
+            end
+            for rowIndex = 1, ROWS do
+                local cell = rows[rowIndex].cells[column]
+                cell:SetShown(definition ~= nil)
+                if definition then
+                    cell:ClearAllPoints()
+                    cell:SetPoint("LEFT", definition[2], 0)
+                    cell:SetWidth(definition[3])
+                end
+            end
+        end
+    end
 
-    leaderboardTab:SetScript("OnClick", function() LL:SetBoardPage("leaderboard") end)
-    professionsTab:SetScript("OnClick", function() LL:SetBoardPage("professions") end)
-    bountyTab:SetScript("OnClick", function() LL:SetBoardPage("bounty") end)
-    self:SetBoardPage(self.selectedBoardPage or "leaderboard")
+    local function buildRows()
+        local data, tab = {}, tabs[currentTab]
+        if tab == "Kills" or tab == "Deaths" then
+            local key, members = tab == "Kills" and "kills" or "deaths", LL:Members()
+            table.sort(members, function(left, right)
+                if left[key] ~= right[key] then return left[key] > right[key] end
+                return left.name < right.name
+            end)
+            layout({ { "#", 0, 30 }, { "Name", 36, 200 }, { "Level", 250, 50 }, { tab == "Kills" and "Alliance players killed" or "Deaths", 320, 220 } })
+            for index, member in ipairs(members) do
+                data[index] = { cells = { index, coloredName(member.name, member.class), member.level > 0 and member.level or "", numberText(member[key]) } }
+            end
+            footer:SetText(tab == "Kills" and "Counts honorable kills of enemy players." or "Counts every death, whatever the cause.")
+        elseif tab == "Bounties" then
+            layout({ { "Wanted", 0, 120 }, { "Posted by", 126, 96 }, { "Why", 228, 190 }, { "Status", 424, 76 } })
+            for index, bounty in ipairs(LL:Bounties()) do
+                local status = bounty.active and ("|cffff5555Open|r " .. ago(bounty.createdAt)) or (bounty.canceled and "|cff888888Removed|r" or "|cff55ff55" .. (bounty.completedBy or "?") .. "|r")
+                local action = bounty.active and { id = bounty.id, remove = LL:LegacyNamesMatch(bounty.postedBy, LL:PlayerName()) } or nil
+                data[index] = { cells = { bounty.active and ("|cffff5555" .. bounty.target .. "|r") or ("|cff888888" .. bounty.target .. "|r"), bounty.postedBy, bounty.note or "", status }, action = action }
+            end
+            footer:SetText("Bounties can be claimed automatically after a verified honorable kill, or completed manually.")
+        else
+            local members = LL:Members()
+            table.sort(members, function(left, right) return left.name < right.name end)
+            layout({ { "Name", 0, 130 }, { "Level", 136, 40 }, { "Professions", 184, 220 }, { "Secondary", 410, 154 } })
+            for index, member in ipairs(members) do
+                local primary = member.primaryProfessions ~= "" and formatProfessions(member.primaryProfessions) or table.concat(member.professions, ", ")
+                data[index] = { cells = { coloredName(member.name, member.class), member.level > 0 and member.level or "", primary ~= "" and primary or "|cff666666-|r", formatProfessions(member.secondaryProfessions) } }
+            end
+            footer:SetText("Each character's professions and skill, as last reported by their addon.")
+        end
+        return data
+    end
+
+    refreshBoard = function()
+        if not board:IsShown() or not LL.db then return end
+        for index, button in ipairs(tabButtons) do if index == currentTab then button:LockHighlight() else button:UnlockHighlight() end end
+        entry:SetShown(tabs[currentTab] == "Bounties")
+        completeTarget:SetShown(tabs[currentTab] == "Bounties")
+        subtitle:SetText(LL:IsLagomMember() and "Guild board" or "|cffff5555Only for members of " .. LL.GUILD_NAME .. "|r")
+        local data, maxOffset = buildRows(), 0
+        maxOffset = math.max(0, #data - ROWS)
+        if offset > maxOffset then offset = maxOffset end
+        for index = 1, ROWS do
+            local row, item = rows[index], data[index + offset]
+            row:SetShown(item ~= nil)
+            if item then
+                for column = 1, columns do row.cells[column]:SetText(item.cells[column] ~= nil and tostring(item.cells[column]) or "") end
+                row.action:SetShown(item.action ~= nil)
+                if item.action then
+                    row.action:SetText(item.action.remove and "Remove" or "Complete")
+                    local action = item.action
+                    row.action:SetScript("OnClick", function() if action.remove then LL:RemoveBounty(action.id) else LL:CompleteBounty(action.id) end end)
+                end
+            end
+        end
+        if #data == 0 then
+            rows[1]:Show()
+            rows[1].action:Hide()
+            for column = 1, columns do rows[1].cells[column]:SetText("") end
+            rows[1].cells[1]:SetWidth(W - 40)
+            rows[1].cells[1]:SetText(tabs[currentTab] == "Bounties" and "|cff888888No bounties yet. Post one above.|r" or "|cff888888Nothing to show yet.|r")
+        end
+    end
+    board:SetScript("OnShow", refreshBoard)
+    board:SetScript("OnMouseWheel", function(_, delta) offset = math.max(0, offset - delta * 3); refreshBoard() end)
 end
 
 function LL:SetBoardPage(page)
-    if not self.frame then return end
-    self.selectedBoardPage = page == "bounty" and "bounty" or (page == "professions" and "professions" or "leaderboard")
-    if self.selectedBoardPage == "leaderboard" then self.leaderboardPage:Show() else self.leaderboardPage:Hide() end
-    if self.selectedBoardPage == "professions" then self.professionsPage:Show() else self.professionsPage:Hide() end
-    if self.selectedBoardPage == "bounty" then self.bountyPage:Show() else self.bountyPage:Hide() end
-    self.leaderboardTab:SetActive(self.selectedBoardPage == "leaderboard")
-    self.professionsTab:SetActive(self.selectedBoardPage == "professions")
-    self.bountyTab:SetActive(self.selectedBoardPage == "bounty")
+    local tabs = { leaderboard = 1, kills = 1, deaths = 2, bounty = 3, bounties = 3, professions = 4, profs = 4 }
+    currentTab, offset = tabs[strlower(page or "")] or 1, 0
+    self.selectedBoardPage = page
     self:RefreshUI()
 end
 
 function LL:RefreshUI()
-    if not self.frame or not self.db then return end
-    local players = {}
-    for name, player in pairs(self.db.players) do table.insert(players, { name = name, data = player }) end
-    table.sort(players, function(a, b) return a.data.kills > b.data.kills or (a.data.kills == b.data.kills and a.data.deaths < b.data.deaths) end)
-    self.leaderboardText:Clear()
-    self.leaderboardSummary:SetText(#players .. " guild members recorded")
-    if #players == 0 then self.leaderboardText:AddMessage("No guild profiles have been shared yet.") end
-    for index, entry in ipairs(players) do
-        self.leaderboardText:AddMessage(string.format("|cff7dd3fc%-4d|r %-30s |cff93c5fd%5d|r     |cfffda4af%5d|r", index, entry.name, entry.data.kills or 0, entry.data.deaths or 0))
-    end
-
-    local professionEntries = {}
-    for _, entry in ipairs(players) do table.insert(professionEntries, entry) end
-    table.sort(professionEntries, function(a, b) return a.name < b.name end)
-    self.professionText:Clear()
-    self.professionSummary:SetText(#professionEntries .. " guild profiles")
-    if #professionEntries == 0 then self.professionText:AddMessage("No guild profiles have been shared yet.") end
-    for _, entry in ipairs(professionEntries) do
-        local professions = entry.data.professions or {}
-        local text = #professions > 0 and table.concat(professions, ", ") or "Not shared"
-        self.professionText:AddMessage(string.format("|cffffffff%-38s|r |cff94a3b8%s|r", entry.name, text))
-    end
-
-    self.bountyText:Clear()
-    local active = 0
-    for _, bounty in ipairs(self.db.bounties) do
-        if bounty.active then
-            active = active + 1
-            self.bountyText:AddMessage(string.format("|cff7dd3fc[%s]|r |cffffffff%s|r  |cff94a3b8posted by %s%s|r", bounty.id, bounty.target, bounty.postedBy, bounty.note ~= "" and (" • " .. bounty.note) or ""))
-        end
-    end
-    self.bountySummary:SetText(active .. (active == 1 and " active bounty" or " active bounties"))
-    if active == 0 then self.bountyText:AddMessage("No active bounties. Add the first Alliance target above.") end
+    if refreshBoard then refreshBoard() end
     if self.RefreshCasinoUI then self:RefreshCasinoUI() end
 end
 
-function LL:ToggleUI()
+function LL:ToggleUI(tab)
     if not self:IsLagomMember() then self:Print("This addon is restricted to the OG Lagom guild."); return end
     self:BuildUI()
-    if self.frame:IsShown() then self.frame:Hide() else self:RefreshUI(); self.frame:Show() end
+    if tab then self:SetBoardPage(tab) end
+    if board:IsShown() and not tab then board:Hide() else board:Show(); self:RefreshUI() end
+end
+
+function LagomLedger_OnAddonCompartmentClick()
+    LL:ToggleUI()
 end
 
 function LL:UpdateMinimapButton()
@@ -355,10 +286,10 @@ function LL:BuildMinimapButton()
     button:SetMovable(true)
     button:RegisterForDrag("LeftButton")
     button:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8x8", edgeFile = "Interface\\Buttons\\WHITE8x8", edgeSize = 2 })
-    button:SetBackdropColor(unpack(colors.surface))
-    button:SetBackdropBorderColor(unpack(colors.accent))
+    button:SetBackdropColor(0.06, 0.05, 0.05, 0.96)
+    button:SetBackdropBorderColor(1, 0.82, 0.2, 1)
     local icon = button:CreateTexture(nil, "ARTWORK")
-    icon:SetTexture("Interface\\Icons\\INV_Misc_Note_01")
+    icon:SetTexture("Interface\\Icons\\Achievement_PVP_H_01")
     icon:SetPoint("TOPLEFT", 3, -3)
     icon:SetPoint("BOTTOMRIGHT", -3, 3)
     button:SetScript("OnDragStart", function(self) self:StartMoving() end)
@@ -371,9 +302,7 @@ function LL:BuildMinimapButton()
             LL:UpdateMinimapButton()
         end
     end)
-    button:SetScript("OnClick", function(_, mouseButton)
-        if mouseButton == "RightButton" then LL:ToggleCasino() else LL:ToggleUI() end
-    end)
+    button:SetScript("OnClick", function(_, mouseButton) if mouseButton == "RightButton" then LL:ToggleCasino() else LL:ToggleUI() end end)
     button:SetScript("OnEnter", function(self)
         GameTooltip:SetOwner(self, "ANCHOR_LEFT")
         GameTooltip:AddLine("Lagom Ledger")
@@ -401,7 +330,6 @@ function LL:BuildCasinoUI()
     frame:SetBackdrop({ bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background", edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Border", tile = true, tileSize = 32, edgeSize = 32, insets = { left = 11, right = 11, top = 11, bottom = 11 } })
     frame:Hide()
     self.casinoFrame = frame
-
     local title = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlightLarge")
     title:SetPoint("TOP", 0, -22)
     title:SetText("Lagom Ledger Casino")
@@ -411,7 +339,6 @@ function LL:BuildCasinoUI()
     local close = makeButton(frame, "Close", 70, 22)
     close:SetPoint("TOPRIGHT", -18, -18)
     close:SetScript("OnClick", function() frame:Hide() end)
-
     local wager = CreateFrame("EditBox", nil, frame, "InputBoxTemplate")
     wager:SetPoint("TOPLEFT", 28, -82)
     wager:SetSize(130, 24)
@@ -428,22 +355,15 @@ function LL:BuildCasinoUI()
     local mode = makeButton(frame, "", 145, 24)
     mode:SetPoint("TOPLEFT", 28, -147)
     self.casinoModeIndex = self.casinoModeIndex or 1
-    self.casinoModeButton = mode
-    local function UpdateModeButton()
+    local function updateMode()
         local selected = LL.CASINO_GAME_MODES[LL.casinoModeIndex]
         mode:SetText("Mode: " .. selected.label)
         LL.casinoModeDescription:SetText(selected.description)
     end
-    mode:SetScript("OnClick", function()
-        LL.casinoModeIndex = LL.casinoModeIndex % #LL.CASINO_GAME_MODES + 1
-        UpdateModeButton()
-    end)
+    mode:SetScript("OnClick", function() LL.casinoModeIndex = LL.casinoModeIndex % #LL.CASINO_GAME_MODES + 1; updateMode() end)
     local host = makeButton(frame, "Open lobby", 100, 24)
     host:SetPoint("LEFT", mode, "RIGHT", 10, 0)
-    host:SetScript("OnClick", function()
-        local selected = LL.CASINO_GAME_MODES[LL.casinoModeIndex]
-        LL:OpenCasinoGame(selected.key, wager:GetNumber())
-    end)
+    host:SetScript("OnClick", function() LL:OpenCasinoGame(LL.CASINO_GAME_MODES[LL.casinoModeIndex].key, wager:GetNumber()) end)
     local join = makeButton(frame, "Join", 70, 24)
     join:SetPoint("LEFT", host, "RIGHT", 10, 0)
     join:SetScript("OnClick", function() LL:JoinCasinoGame() end)
@@ -452,26 +372,25 @@ function LL:BuildCasinoUI()
     begin:SetPoint("LEFT", join, "RIGHT", 10, 0)
     begin:SetScript("OnClick", function() LL:StartCasinoGame() end)
     self.casinoGameStart = begin
-    local gameRoll = makeButton(frame, "Roll", 70, 24)
-    gameRoll:SetPoint("LEFT", begin, "RIGHT", 10, 0)
-    gameRoll:SetScript("OnClick", function() LL:RollCasinoGame() end)
-    self.casinoGameRoll = gameRoll
+    local roll = makeButton(frame, "Roll", 70, 24)
+    roll:SetPoint("LEFT", begin, "RIGHT", 10, 0)
+    roll:SetScript("OnClick", function() LL:RollCasinoGame() end)
+    self.casinoGameRoll = roll
     local cancel = makeButton(frame, "Close", 70, 24)
-    cancel:SetPoint("LEFT", gameRoll, "RIGHT", 10, 0)
+    cancel:SetPoint("LEFT", roll, "RIGHT", 10, 0)
     cancel:SetScript("OnClick", function() LL:CloseCasinoGame() end)
     self.casinoGameClose = cancel
-    local gameDescription = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    gameDescription:SetPoint("TOPLEFT", 28, -178)
-    gameDescription:SetPoint("TOPRIGHT", -28, -178)
-    gameDescription:SetJustifyH("LEFT")
-    self.casinoModeDescription = gameDescription
-    UpdateModeButton()
-    local groupState = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    groupState:SetPoint("TOPLEFT", 28, -200)
-    groupState:SetPoint("TOPRIGHT", -28, -200)
-    groupState:SetJustifyH("LEFT")
-    self.casinoGroupState = groupState
-
+    local description = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    description:SetPoint("TOPLEFT", 28, -178)
+    description:SetPoint("TOPRIGHT", -28, -178)
+    description:SetJustifyH("LEFT")
+    self.casinoModeDescription = description
+    updateMode()
+    local state = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    state:SetPoint("TOPLEFT", 28, -200)
+    state:SetPoint("TOPRIGHT", -28, -200)
+    state:SetJustifyH("LEFT")
+    self.casinoGroupState = state
     local winnersTitle = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
     winnersTitle:SetPoint("TOPLEFT", 28, -237)
     winnersTitle:SetText("TOP 10 — MOST GOLD WON")
@@ -482,7 +401,6 @@ function LL:BuildCasinoUI()
     winners:SetJustifyH("LEFT")
     winners:SetFading(false)
     self.casinoWinners = winners
-
     local losersTitle = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
     losersTitle:SetPoint("TOPLEFT", 382, -237)
     losersTitle:SetText("TOP 10 — MOST GOLD LOST")
@@ -493,7 +411,6 @@ function LL:BuildCasinoUI()
     losers:SetJustifyH("LEFT")
     losers:SetFading(false)
     self.casinoLosers = losers
-
     local historyTitle = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
     historyTitle:SetPoint("TOPLEFT", 28, -444)
     historyTitle:SetText("LAST 5 GAMES")
@@ -510,10 +427,10 @@ function LL:RefreshCasinoUI()
     if not self.casinoFrame then return end
     local entries = {}
     for name, stats in pairs(self.db.casinoStats) do table.insert(entries, { name = name, stats = stats }) end
-    local function FillList(target, field, emptyText)
+    local function fill(target, field)
         local sorted = {}
         for _, entry in ipairs(entries) do table.insert(sorted, entry) end
-        table.sort(sorted, function(a, b) return (a.stats[field] or 0) > (b.stats[field] or 0) end)
+        table.sort(sorted, function(left, right) return (left.stats[field] or 0) > (right.stats[field] or 0) end)
         target:Clear()
         local count = 0
         for _, entry in ipairs(sorted) do
@@ -523,30 +440,26 @@ function LL:RefreshCasinoUI()
                 if count == 10 then break end
             end
         end
-        if count == 0 then target:AddMessage(emptyText) end
+        if count == 0 then target:AddMessage("No completed casino games yet.") end
     end
-    FillList(self.casinoWinners, "wonGold", "No completed casino games yet.")
-    FillList(self.casinoLosers, "lostGold", "No completed casino games yet.")
+    fill(self.casinoWinners, "wonGold")
+    fill(self.casinoLosers, "lostGold")
     self.casinoHistoryText:Clear()
     if #self.db.casinoHistory == 0 then
         self.casinoHistoryText:AddMessage("No completed casino games yet.")
     else
         for _, result in ipairs(self.db.casinoHistory) do
-            if result.summary then
-                self.casinoHistoryText:AddMessage(result.mode .. ": " .. result.summary)
-            else
-                self.casinoHistoryText:AddMessage(string.format("%s beat %s — %d gold (%d-%d)", result.winner, result.loser, result.wager, result.hostRoll or 0, result.challengerRoll or 0))
-            end
+            self.casinoHistoryText:AddMessage(result.summary and (result.mode .. ": " .. result.summary) or string.format("%s beat %s — %d gold", result.winner, result.loser, result.wager))
         end
     end
-    local groupGame = self:GetGroupCasinoGame()
-    self.casinoGameJoin:SetEnabled(groupGame and groupGame.status == "lobby" and not groupGame.playerSet[self:PlayerName()])
-    self.casinoGameStart:SetEnabled(groupGame and groupGame.status == "lobby" and self:IsGroupCasinoHost(groupGame))
-    self.casinoGameRoll:SetEnabled(groupGame and groupGame.status == "running" and self:FindGroupPlayer(groupGame, self:PlayerName()) ~= nil)
-    self.casinoGameClose:SetEnabled(groupGame and self:IsGroupCasinoHost(groupGame))
-    if groupGame then
-        local mode = self:GetCasinoGameMode(groupGame.mode)
-        self.casinoGroupState:SetText((mode and mode.label or groupGame.mode) .. " — " .. #groupGame.players .. " player(s). " .. (groupGame.message or (groupGame.status == "lobby" and "Lobby is open." or "Game in progress.")))
+    local game = self:GetGroupCasinoGame()
+    self.casinoGameJoin:SetEnabled(game and game.status == "lobby" and not game.playerSet[self:PlayerName()])
+    self.casinoGameStart:SetEnabled(game and game.status == "lobby" and self:IsGroupCasinoHost(game))
+    self.casinoGameRoll:SetEnabled(game and game.status == "running" and self:FindGroupPlayer(game, self:PlayerName()) ~= nil)
+    self.casinoGameClose:SetEnabled(game and self:IsGroupCasinoHost(game))
+    if game then
+        local mode = self:GetCasinoGameMode(game.mode)
+        self.casinoGroupState:SetText((mode and mode.label or game.mode) .. " — " .. #game.players .. " player(s). " .. (game.message or (game.status == "lobby" and "Lobby is open." or "Game in progress.")))
     else
         self.casinoGroupState:SetText("No guild game is open.")
     end
