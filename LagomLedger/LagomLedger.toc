@@ -2,9 +2,9 @@
 ## Title: Lagom Ledger
 ## Notes: Guild PvP leaderboard and bounty board.
 ## Author: Lagom Ledger
-## Version: 1.7.0
+## Version: 1.7.1
 ## SavedVariables: LagomLedgerDB
-## OptionalDeps: Blizzard_Professions, EllesmereUI, EllesmereUIMinimap
+## OptionalDeps: Blizzard_Professions, EllesmereUI, EllesmereUIMinimap, atrocityEssentials
 ## IconTexture: Interface\\Icons\\Achievement_PVP_H_01
 ## AddonCompartmentFunc: LagomLedger_OnAddonCompartmentClick
 

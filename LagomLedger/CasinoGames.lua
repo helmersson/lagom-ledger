@@ -185,7 +185,7 @@ function LL:FinishCasinoGame(game, summary, debts)
     self:ApplyCasinoGameResult(result)
     self:Broadcast("CASINO_GAME_RESULT", result)
     for _, debt in ipairs(debts or {}) do
-        local settlement = { id = game.id, winner = debt.winner, loser = debt.loser, amount = debt.amount }
+        local settlement = { id = game.id, winner = debt.winner, loser = debt.loser, amount = debt.amount, amountCopper = debt.amount * 10000, createdAt = result.finishedAt }
         self:ApplyCasinoSettlement(settlement)
         self:Broadcast("CASINO_GAME_SETTLE", settlement)
     end
@@ -203,10 +203,12 @@ end
 
 function LL:ApplyCasinoSettlement(settlement)
     if not settlement.id or not settlement.winner or not settlement.loser or not settlement.amount then return end
+    settlement.amountCopper = settlement.amountCopper or settlement.amount * 10000
     local key = self:CasinoSettlementKey(settlement)
     self.db.casinoSettlements[settlement.id] = self.db.casinoSettlements[settlement.id] or {}
     if self.db.casinoSettlements[settlement.id][key] then return end
     self.db.casinoSettlements[settlement.id][key] = settlement
+    self:RecordBalanceTransaction("casino", settlement)
     local winner, loser = self:GetCasinoStats(settlement.winner), self:GetCasinoStats(settlement.loser)
     winner.wonGold, winner.games = winner.wonGold + settlement.amount, winner.games + 1
     loser.lostGold, loser.games = loser.lostGold + settlement.amount, loser.games + 1

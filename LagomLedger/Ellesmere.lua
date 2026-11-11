@@ -10,6 +10,42 @@ function LL:IsEllesmereMinimapActive()
     return loaded == true
 end
 
+function LL:IsAtrocityMinimapActive()
+    if not C_AddOns or not C_AddOns.IsAddOnLoaded then return false end
+    local _, loaded = C_AddOns.IsAddOnLoaded("atrocityEssentials")
+    if not loaded or not atrocityEssentials or not atrocityEssentials.GetModule then return false end
+    local minimap = atrocityEssentials:GetModule("Minimap", true)
+    return minimap and minimap.active == true
+end
+
+function LL:UseAtrocityMinimapButton()
+    if not self.db or not self:IsAtrocityMinimapActive() or not LibStub then return false end
+    local dbIcon = LibStub("LibDBIcon-1.0", true)
+    if not dbIcon then return false end
+    self.db.minimap.atrocity = self.db.minimap.atrocity or { hide = false }
+    if self.atrocityMinimapDB == self.db.minimap.atrocity and dbIcon:IsRegistered("LagomLedger") then return true end
+    self.atrocityMinimapData = self.atrocityMinimapData or {
+        type = "launcher",
+        icon = "Interface\\Icons\\Achievement_PVP_H_01",
+        OnClick = function(_, mouseButton)
+            if mouseButton == "RightButton" then LL:ToggleCasino() else LL:ToggleUI() end
+        end,
+        OnTooltipShow = function(tooltip)
+            tooltip:AddLine("Lagom Ledger")
+            tooltip:AddLine("Left-click: open guild board", 0.70, 0.82, 0.95)
+            tooltip:AddLine("Right-click: open casino tab", 0.70, 0.82, 0.95)
+        end,
+    }
+    if not dbIcon:IsRegistered("LagomLedger") then
+        local ok = pcall(dbIcon.Register, dbIcon, "LagomLedger", self.atrocityMinimapData, self.db.minimap.atrocity)
+        if not ok then return false end
+    else
+        dbIcon:Refresh("LagomLedger", self.db.minimap.atrocity)
+    end
+    self.atrocityMinimapDB = self.db.minimap.atrocity
+    return true
+end
+
 local function AddText(parent, text, y)
     local line = parent:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     line:SetPoint("TOPLEFT", 24, y)

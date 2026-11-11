@@ -31,6 +31,10 @@ function LL:CasinoSettlementKey(settlement)
     return settlement.id .. "|" .. settlement.winner .. "|" .. settlement.loser .. "|" .. settlement.amount
 end
 
+function LL:DebtKey(debt)
+    return debt.kind .. "|" .. (debt.kind == "casino" and self:CasinoSettlementKey(debt) or debt.id)
+end
+
 function LL:GetCasinoDebts()
     if not self.db then return {} end
     local finishedAt, debts = {}, {}
@@ -38,13 +42,21 @@ function LL:GetCasinoDebts()
     for _, settlements in pairs(self.db.casinoSettlements or {}) do
         for _, settlement in pairs(settlements) do
             if self:NamesMatch(settlement.loser, self:PlayerName()) and (settlement.amount or 0) > 0 and not settlement.paidAt then
-                table.insert(debts, settlement)
+                table.insert(debts, { kind = "casino", id = settlement.id, winner = settlement.winner, loser = settlement.loser,
+                    amount = settlement.amount, amountCopper = settlement.amount * 10000, createdAt = settlement.createdAt or finishedAt[settlement.id] or 0,
+                    settlement = settlement })
             end
         end
     end
+    for _, settlement in pairs(self.db.bountySettlements or {}) do
+        if self:NamesMatch(settlement.loser, self:PlayerName()) and (settlement.amountCopper or 0) > 0 and not settlement.paidAt then
+            table.insert(debts, { kind = "bounty", id = settlement.id, winner = settlement.winner, loser = settlement.loser,
+                amountCopper = settlement.amountCopper, target = settlement.target, createdAt = settlement.createdAt or 0, settlement = settlement })
+        end
+    end
     table.sort(debts, function(left, right)
-        local leftTime, rightTime = finishedAt[left.id] or 0, finishedAt[right.id] or 0
-        if leftTime == rightTime then return self:CasinoSettlementKey(left) < self:CasinoSettlementKey(right) end
+        local leftTime, rightTime = left.createdAt or 0, right.createdAt or 0
+        if leftTime == rightTime then return self:DebtKey(left) < self:DebtKey(right) end
         return leftTime < rightTime
     end)
     return debts
@@ -57,9 +69,9 @@ end
 
 function LL:PrepareCasinoDebtMail()
     local debt, debtCount = self:GetNextCasinoDebt()
-    if not debt then self:Print("You have no outstanding casino debts."); return false end
-    if GetMoney and GetMoney() < debt.amount * 10000 then
-        self:Print("You need " .. debt.amount .. " gold in your bags to pay this casino debt.")
+    if not debt then self:Print("You have no outstanding debts."); return false end
+    if GetMoney and GetMoney() < debt.amountCopper then
+        self:Print("You need " .. self:FormatMoney(debt.amountCopper) .. " in your bags to pay this debt.")
         return false
     end
     local mailFrame, recipient, subject, mailMoney = _G.SendMailFrame, _G.SendMailNameEditBox, _G.SendMailSubjectEditBox, _G.SendMailMoney
@@ -69,12 +81,12 @@ function LL:PrepareCasinoDebtMail()
     end
     local filled = pcall(function()
         recipient:SetText(debt.winner)
-        subject:SetText("Lagom Ledger casino debt")
-        mailMoney:SetAmount(debt.amount * 10000)
+        subject:SetText(debt.kind == "bounty" and "Lagom Ledger bounty reward" or "Lagom Ledger casino debt")
+        mailMoney:SetAmount(debt.amountCopper)
     end)
     if not filled then self:Print("Lagom Ledger could not fill the Blizzard mail form."); return false end
-    self.preparedCasinoDebtKey = self:CasinoSettlementKey(debt)
-    self:Print("Prepared " .. debt.amount .. " gold for " .. debt.winner .. ". Review it and use Blizzard's Send button; then select Mark paid here.")
+    self.preparedCasinoDebtKey = self:DebtKey(debt)
+    self:Print("Prepared " .. self:FormatMoney(debt.amountCopper) .. " for " .. debt.winner .. ". Review it and use Blizzard's Send button; then select Mark paid here.")
     self:RefreshUI()
     return true
 end
@@ -85,24 +97,31 @@ function LL:ApplyCasinoDebtPayment(payment)
     local settlement = settlements and settlements[self:CasinoSettlementKey(payment)]
     if not settlement or settlement.paidAt then return end
     settlement.paidAt, settlement.paidBy = payment.paidAt or time(), payment.paidBy
+    self:MarkBalanceTransactionPaid("casino", settlement, settlement.paidAt)
     self:RefreshUI()
 end
 
 function LL:MarkPreparedCasinoDebtPaid()
     local key = self.preparedCasinoDebtKey
-    if not key then self:Print("Prepare a casino-debt mail before marking it paid."); return false end
+    if not key then self:Print("Prepare a debt mail before marking it paid."); return false end
     for _, debt in ipairs(self:GetCasinoDebts()) do
-        if self:CasinoSettlementKey(debt) == key then
-            local payment = { id = debt.id, winner = debt.winner, loser = debt.loser, amount = debt.amount, paidBy = self:PlayerName(), paidAt = time() }
+        if self:DebtKey(debt) == key then
             self.preparedCasinoDebtKey = nil
-            self:ApplyCasinoDebtPayment(payment)
-            self:Broadcast("CASINO_GAME_DEBT_PAID", payment)
-            self:Print("Marked " .. debt.amount .. " gold to " .. debt.winner .. " as paid.")
+            if debt.kind == "bounty" then
+                local payment = { id = debt.id, paidBy = self:PlayerName(), paidAt = time() }
+                self:ApplyBountyDebtPayment(payment)
+                self:Broadcast("BOUNTY_DEBT_PAID", payment)
+            else
+                local payment = { id = debt.id, winner = debt.winner, loser = debt.loser, amount = debt.amount, paidBy = self:PlayerName(), paidAt = time() }
+                self:ApplyCasinoDebtPayment(payment)
+                self:Broadcast("CASINO_GAME_DEBT_PAID", payment)
+            end
+            self:Print("Marked " .. self:FormatMoney(debt.amountCopper) .. " to " .. debt.winner .. " as paid.")
             return true
         end
     end
     self.preparedCasinoDebtKey = nil
-    self:Print("That casino debt is no longer outstanding.")
+    self:Print("That debt is no longer outstanding.")
     self:RefreshUI()
     return false
 end
