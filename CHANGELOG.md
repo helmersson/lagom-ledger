@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.7.2 - Release candidate
+
+- Added a dedicated internal guild-addon version check after login, with delayed replies to avoid guild-message spam.
+- Remembered a detected newer release for three days and retained profile-sync notices for compatible older Ledger installs.
+
 ## 1.7.0 - Release candidate
 
 - Added centered top-three class portraits with gold, silver and bronze crowns to the Kills and Deaths leaderboards.
