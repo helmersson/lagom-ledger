@@ -265,7 +265,7 @@ function LL:BuildUI()
         LL:Print("Target an enemy player first.")
     end)
 
-    local columns, columnHeaders, headerY, rowHeight = 6, {}, -55, ROW_H
+    local columns, columnHeaders, headerY, rowHeight = 7, {}, -55, ROW_H
     for column = 1, columns do columnHeaders[column] = text(recordsContent, 11, unpack(JOURNAL.title)) end
     local line = recordsContent:CreateTexture(nil, "ARTWORK")
     line:SetColorTexture(unpack(JOURNAL.border))
@@ -295,7 +295,7 @@ function LL:BuildUI()
     completeTarget:SetScript("OnClick", function() LL:CompleteSelectedBounties() end)
 
     local topThree = CreateFrame("Frame", nil, recordsContent)
-    topThree:SetSize(474, 76)
+    topThree:SetSize(474, 102)
     topThree:SetPoint("TOP", recordsContent, "TOP", 0, -8)
     local topThreeTitle = text(topThree, 10, unpack(JOURNAL.title))
     topThreeTitle:SetPoint("TOP", 0, -1)
@@ -332,6 +332,15 @@ function LL:BuildUI()
         card.value:SetJustifyH("CENTER")
         topCards[rank] = card
     end
+    local nemesisRow = makePanel(topThree, JOURNAL.header)
+    nemesisRow:SetPoint("TOPLEFT", 0, -78)
+    nemesisRow:SetPoint("TOPRIGHT", 0, -78)
+    nemesisRow:SetHeight(20)
+    nemesisRow.label = text(nemesisRow, 10, unpack(JOURNAL.title))
+    nemesisRow.label:SetPoint("LEFT", 6, 0)
+    nemesisRow.label:SetPoint("RIGHT", -6, 0)
+    nemesisRow.label:SetJustifyH("CENTER")
+    nemesisRow:Hide()
     topThree:Hide()
 
     local function setTableHeaderY(value)
@@ -425,22 +434,30 @@ function LL:BuildUI()
             table.sort(members, function(left, right) if left[key] ~= right[key] then return left[key] > right[key] end return left.name < right.name end)
             showTopThree(key, label, members)
             if tab == "Kills" then
+                nemesisRow:Hide()
                 layout({ { "#", 0, 26 }, { "Name", 32, 156 }, { "Level", 194, 40 }, { scoreHeader, 240, 150 }, { "Streak", 396, 94 } })
                 for index, member in ipairs(members) do data[index] = { cells = { index, coloredName(member.name, member.class), member.level > 0 and member.level or "", numberText(member[key]), numberText(member.killStreak) } } end
                 footer:SetText(leaderboardScope == "weekly" and "Counts honorable kills since the server's weekly reset." or "Counts lifetime honorable kills. Streak resets after an observed PvP death.")
             else
-                layout({ { "#", 0, 26 }, { "Name", 32, 128 }, { "Level", 166, 40 }, { scoreHeader, 212, 65 }, { "Alive", 283, 105 }, { "Longest life", 394, 110 } })
+                local guildNemesis, guildNemesisKills = LL:TopGuildNemesis()
+                nemesisRow.label:SetText(guildNemesis and ("GUILD NEMESIS — " .. LL:ShortName(guildNemesis) .. " (" .. numberText(guildNemesisKills) .. " recorded PvP deaths)") or "GUILD NEMESIS — No recorded PvP deaths yet")
+                nemesisRow:Show()
+                setTableHeaderY(-138)
+                layout({ { "#", 0, 22 }, { "Name", 28, 116 }, { "Level", 150, 35 }, { scoreHeader, 191, 50 }, { "Nemesis", 247, 130 }, { "Alive", 383, 80 }, { "Longest life", 469, 90 } })
                 for index, member in ipairs(members) do
                     local aliveFor = member.aliveSince and math.max(0, time() - member.aliveSince) or nil
                     local currentLife = member.lifeTracked and (aliveFor and duration(aliveFor) or "Dead") or "-"
                     local longestLife = member.lifeTracked and duration(member.longestLife) or "-"
-                    data[index] = { cells = { index, coloredName(member.name, member.class), member.level > 0 and member.level or "", numberText(member[key]), currentLife, longestLife } }
+                    local nemesis, nemesisKills = LL:TopNemesis(member.name)
+                    local nemesisText = nemesis and ("|cffff7777" .. LL:ShortName(nemesis) .. "|r (" .. numberText(nemesisKills) .. ")") or "-"
+                    data[index] = { cells = { index, coloredName(member.name, member.class), member.level > 0 and member.level or "", numberText(member[key]), nemesisText, currentLife, longestLife } }
                 end
-                footer:SetText(leaderboardScope == "weekly" and "Tracks deaths since the server's weekly reset." or "Tracks every death. Life duration is shown when the member has reported this version.")
+                footer:SetText(leaderboardScope == "weekly" and "Tracks deaths since the server's weekly reset. Nemeses use all recorded PvP deaths." or "Tracks every death. Nemeses use all recorded PvP deaths.")
             end
         elseif tab == "Bounties" then
             setRowHeight(ROW_H)
             topThree:Hide()
+            nemesisRow:Hide()
             setTableHeaderY(-55)
             layout({ { "Wanted", 0, 104 }, { "Posted by", 110, 98 }, { "Why", 214, 205 }, { "Status", 425, 70 } })
             for index, bounty in ipairs(LL:Bounties()) do
@@ -452,6 +469,7 @@ function LL:BuildUI()
         else
             setRowHeight(50)
             topThree:Hide()
+            nemesisRow:Hide()
             setTableHeaderY(-55)
             local members = LL:Members()
             table.sort(members, function(left, right) return left.name < right.name end)
@@ -551,6 +569,11 @@ function LagomLedger_OnAddonCompartmentClick() LL:ToggleUI() end
 
 function LL:UpdateMinimapButton(force)
     if not self.minimapButton or not self.db then return end
+    if self.UseAtrocityMinimapButton and self:UseAtrocityMinimapButton() then
+        self.minimapButton:Hide()
+        return
+    end
+    self.minimapButton:Show()
     if not force and self:IsEllesmereMinimapActive() then return end
     local angle = math.rad(self.db.minimap.angle or 225)
     self.minimapButton:ClearAllPoints()
@@ -589,6 +612,7 @@ function LL:BuildMinimapButton()
     button:SetScript("OnLeave", function() GameTooltip:Hide() end)
     self.minimapButton = button
     self:UpdateMinimapButton(true)
+    if C_Timer and C_Timer.After then C_Timer.After(1, function() if LL.minimapButton then LL:UpdateMinimapButton() end end) end
 end
 
 function LL:BuildCasinoUI()

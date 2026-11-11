@@ -4,7 +4,7 @@ LL.ADDON_NAME = addonName
 LL.GUILD_NAME = nil
 LL.COMM_PREFIX = "LAGOMLEDGER"
 LL.VERSION = 1
-LL.RELEASE = "1.7.0"
+LL.RELEASE = "1.7.1"
 LL.versionNoticeSent = {}
 
 local function now()
@@ -34,7 +34,7 @@ function LL:PlayerName()
 end
 
 function LL:PlayerIdentityKey(name)
-    return strlower((strtrim(name or ""):gsub("%s+", "-")))
+    return strlower((strtrim(name or ""):match("^([^%-%s]+)") or ""))
 end
 
 function LL:MergePlayerRecords(primary, duplicate)
@@ -131,14 +131,13 @@ function LL:NotifyOutdatedMember(sender, release)
     if self.versionNoticeSent[sender] then return end
     if self.loginUpdateCheck and self:IsNewerRelease(release) then
         self.versionNoticeSent[sender] = true
+        self.versionNoticeSent["update:" .. release] = true
         self:Print("Update available: " .. sender .. " uses Lagom Ledger " .. release .. "; you use " .. self.RELEASE .. ".")
         return
     end
-    if not self:IsOlderRelease(release) then return end
+    if not release or release == "" or not self:IsOlderRelease(release) then return end
     self.versionNoticeSent[sender] = true
-    if SendChatMessage then
-        SendChatMessage("Lagom Ledger " .. self.RELEASE .. " is available. Please update your addon.", "WHISPER", nil, sender)
-    end
+    self:Broadcast("UPDATE_AVAILABLE", { target = sender, release = self.RELEASE })
 end
 
 function LL:InitializeGuildDatabase(db)
@@ -150,6 +149,7 @@ function LL:InitializeGuildDatabase(db)
     db.casinoProcessedGames = db.casinoProcessedGames or {}
     db.nextCasinoId = db.nextCasinoId or 1
     db.casinoSettlements = db.casinoSettlements or {}
+    db.nemeses = db.nemeses or {}
     db.minimap = db.minimap or { angle = 225 }
 end
 
@@ -240,6 +240,17 @@ function LL:RefreshLocalProfile()
     self:RefreshUI()
 end
 
+function LL:AnnounceLevelUp(level)
+    if not self.db then return end
+    local player = self:EnsurePlayer(self:PlayerName())
+    player.level = tonumber(level) or UnitLevel("player") or player.level or 0
+    player.updatedAt = now()
+    local payload = { name = self:PlayerName(), level = player.level }
+    self:Print(payload.name .. " reached level " .. payload.level .. "!")
+    self:Broadcast("LEVEL_UP", payload)
+    self:RefreshLocalProfile()
+end
+
 function LL:Broadcast(kind, payload)
     if not self:IsLagomMember() or not C_ChatInfo then return end
     local message = self.VERSION .. "|" .. kind .. "|" .. self:Serialize(kind, payload)
@@ -263,6 +274,12 @@ function LL:Serialize(kind, payload)
         local professions = {}
         for _, profession in ipairs(payload.professions or {}) do table.insert(professions, self:Escape(profession)) end
         return table.concat({ self:Escape(payload.name), payload.kills or 0, payload.deaths or 0, table.concat(professions, ","), payload.updatedAt or now(), self:Escape(payload.release), self:Escape(payload.class), payload.level or 0, self:Escape(payload.primaryProfessions), self:Escape(payload.secondaryProfessions), payload.killStreak or 0, payload.aliveSince or 0, payload.longestLife or 0, payload.weeklyReset or 0, payload.weeklyKills or 0, payload.weeklyDeaths or 0 }, ";")
+    elseif kind == "LEVEL_UP" then
+        return table.concat({ self:Escape(payload.name), payload.level or 0 }, ";")
+    elseif kind == "UPDATE_AVAILABLE" then
+        return table.concat({ self:Escape(payload.target), self:Escape(payload.release) }, ";")
+    elseif kind == "PVP_DEATH" then
+        return table.concat({ self:Escape(payload.victim), self:Escape(payload.killer) }, ";")
     elseif kind == "BOUNTY_ADD" then
         return table.concat({ self:Escape(payload.id), self:Escape(payload.target), self:Escape(payload.note), self:Escape(payload.postedBy), payload.createdAt or now() }, ";")
     elseif kind == "BOUNTY_COMPLETE" then
@@ -297,6 +314,12 @@ function LL:Decode(message)
         local professions = {}
         for profession in string.gmatch(fields[4] or "", "[^,]+") do table.insert(professions, self:Unescape(profession)) end
         return kind, { name = self:Unescape(fields[1]), kills = tonumber(fields[2]), deaths = tonumber(fields[3]), professions = professions, updatedAt = tonumber(fields[5]), release = self:Unescape(fields[6]), class = self:Unescape(fields[7]), level = tonumber(fields[8]), primaryProfessions = self:Unescape(fields[9]), secondaryProfessions = self:Unescape(fields[10]), killStreak = tonumber(fields[11]), aliveSince = tonumber(fields[12]), longestLife = tonumber(fields[13]), weeklyReset = tonumber(fields[14]), weeklyKills = tonumber(fields[15]), weeklyDeaths = tonumber(fields[16]) }
+    elseif kind == "LEVEL_UP" then
+        return kind, { name = self:Unescape(fields[1]), level = tonumber(fields[2]) }
+    elseif kind == "UPDATE_AVAILABLE" then
+        return kind, { target = self:Unescape(fields[1]), release = self:Unescape(fields[2]) }
+    elseif kind == "PVP_DEATH" then
+        return kind, { victim = self:Unescape(fields[1]), killer = self:Unescape(fields[2]) }
     elseif kind == "BOUNTY_ADD" then
         return kind, { id = self:Unescape(fields[1]), target = self:Unescape(fields[2]), note = self:Unescape(fields[3]), postedBy = self:Unescape(fields[4]), createdAt = tonumber(fields[5]), active = true }
     elseif kind == "BOUNTY_COMPLETE" then
@@ -339,6 +362,43 @@ function LL:RecordDeath(pvpCombat)
     self:RefreshUI()
 end
 
+function LL:RecordNemesisDeath(victim, killer)
+    if not self.db or type(killer) ~= "string" or killer == "" then return end
+    local victimKey = self:PlayerIdentityKey(victim)
+    if victimKey == "" then return end
+    self.db.nemeses[victimKey] = self.db.nemeses[victimKey] or {}
+    self.db.nemeses[victimKey][killer] = (self.db.nemeses[victimKey][killer] or 0) + 1
+end
+
+function LL:TopNemesis(victim)
+    local nemesis, kills
+    for killer, count in pairs((self.db and self.db.nemeses[self:PlayerIdentityKey(victim)]) or {}) do
+        if not kills or count > kills or (count == kills and killer < nemesis) then nemesis, kills = killer, count end
+    end
+    return nemesis, kills
+end
+
+function LL:TopGuildNemesis()
+    local totals, nemesis, kills = {}, nil, nil
+    for _, victimKills in pairs((self.db and self.db.nemeses) or {}) do
+        for killer, count in pairs(victimKills) do totals[killer] = (totals[killer] or 0) + count end
+    end
+    for killer, count in pairs(totals) do
+        if not kills or count > kills or (count == kills and killer < nemesis) then nemesis, kills = killer, count end
+    end
+    return nemesis, kills
+end
+
+function LL:AnnouncePvpDeath(lastOpponent)
+    if not self.db then return end
+    local payload = { victim = self:PlayerName(), killer = lastOpponent or "" }
+    self:RecordNemesisDeath(payload.victim, payload.killer)
+    local message = payload.victim .. " died in PvP"
+    if payload.killer ~= "" then message = message .. " to " .. payload.killer .. " (last observed hostile target)" end
+    self:Print(message .. ".")
+    self:Broadcast("PVP_DEATH", payload)
+end
+
 function LL:StartNewLife()
     if not self.db then return end
     local player = self:EnsurePlayer(self:PlayerName())
@@ -349,7 +409,12 @@ function LL:StartNewLife()
 end
 
 function LL:NotePvpCombat()
-    if self.inCombat and UnitExists("target") and UnitIsPlayer("target") and UnitCanAttack("player", "target") then self.lastPvpCombatAt = now() end
+    if self.inCombat and UnitExists("target") and UnitIsPlayer("target") and UnitCanAttack("player", "target") then
+        self.lastPvpCombatAt = now()
+        local opponent = UnitName("target")
+        -- shortcut: a local target is the only killer hint Forever exposes; replace it if a supported killer event becomes available.
+        if type(opponent) == "string" and (not issecretvalue or not issecretvalue(opponent)) then self.lastPvpOpponent = opponent end
+    end
 end
 
 function LL:WasRecentPvpCombat()
@@ -460,6 +525,21 @@ function LL:OnComm(prefix, message, channel, sender)
             player.lifeTracked = true
         end
         self:NotifyOutdatedMember(sender, payload.release)
+    elseif kind == "LEVEL_UP" and payload.name and payload.level then
+        local player = self:EnsurePlayer(payload.name)
+        player.level = payload.level
+        self:Print(payload.name .. " reached level " .. payload.level .. "!")
+    elseif kind == "UPDATE_AVAILABLE" and payload.target and payload.release and self:PlayerIdentityKey(payload.target) == self:PlayerIdentityKey(self:PlayerName()) and self:IsNewerRelease(payload.release) then
+        local noticeKey = "update:" .. payload.release
+        if not self.versionNoticeSent[noticeKey] then
+            self.versionNoticeSent[noticeKey] = true
+            self:Print("Update available: Lagom Ledger " .. payload.release .. " is available.")
+        end
+    elseif kind == "PVP_DEATH" and payload.victim then
+        self:RecordNemesisDeath(payload.victim, payload.killer)
+        local message = payload.victim .. " died in PvP"
+        if payload.killer and payload.killer ~= "" then message = message .. " to " .. payload.killer .. " (last observed hostile target)" end
+        self:Print(message .. ".")
     elseif kind == "BOUNTY_ADD" and payload.id and payload.target then
         for _, bounty in ipairs(self.db.bounties) do if bounty.id == payload.id then return end end
         table.insert(self.db.bounties, payload)
@@ -504,8 +584,10 @@ function LL:OnEvent(event, ...)
     elseif event == "PLAYER_TARGET_CHANGED" and self.db then
         self:NotePvpCombat()
     elseif event == "PLAYER_DEAD" and self.db then
-        self:RecordDeath(self:WasRecentPvpCombat())
-        self.inCombat, self.lastPvpCombatAt = false, nil
+        local pvpCombat = self:WasRecentPvpCombat()
+        if pvpCombat then self:AnnouncePvpDeath(self.lastPvpOpponent) end
+        self:RecordDeath(pvpCombat)
+        self.inCombat, self.lastPvpCombatAt, self.lastPvpOpponent = false, nil, nil
     elseif event == "PLAYER_ALIVE" and self.db then
         self:StartNewLife()
     elseif event == "CHAT_MSG_ADDON" and self.db then
@@ -514,6 +596,8 @@ function LL:OnEvent(event, ...)
         self:HandleRollMessage(...)
     elseif event == "SKILL_LINES_CHANGED" and self.db then
         self:RefreshLocalProfile()
+    elseif event == "PLAYER_LEVEL_UP" and self.db then
+        self:AnnounceLevelUp(...)
     elseif event == "PLAYER_GUILD_UPDATE" then
         local unit = ...
         if unit == "player" then
@@ -562,5 +646,6 @@ frame:RegisterEvent("PLAYER_TARGET_CHANGED")
 frame:RegisterEvent("CHAT_MSG_ADDON")
 frame:RegisterEvent("CHAT_MSG_SYSTEM")
 frame:RegisterEvent("SKILL_LINES_CHANGED")
+frame:RegisterEvent("PLAYER_LEVEL_UP")
 frame:RegisterEvent("PLAYER_GUILD_UPDATE")
 frame:SetScript("OnEvent", function(_, event, ...) LL:OnEvent(event, ...) end)

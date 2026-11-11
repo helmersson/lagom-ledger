@@ -6,7 +6,7 @@ It is compatible with the supplied **Lagom** addon (v1.0.2): players can use eit
 
 Only guild members who have the addon installed can open the interface or receive its synchronized data.
 
-When [EllesmereUI](https://github.com/EllesmereGaming/EllesmereUI) is installed, Lagom Ledger registers a section in its settings panel. This integration uses EllesmereUI's supported plugin API and does not change EllesmereUI's own files. With EllesmereUIMinimap enabled, its standard minimap-button collector manages the Ledger button; use EllesmereUI's grouping controls and Shift-drag instead of Ledger's standalone drag.
+When [EllesmereUI](https://github.com/EllesmereGaming/EllesmereUI) is installed, Lagom Ledger registers a section in its settings panel. This integration uses EllesmereUI's supported plugin API and does not change EllesmereUI's own files. With EllesmereUIMinimap enabled, its standard minimap-button collector manages the Ledger button; use EllesmereUI's grouping controls and Shift-drag instead of Ledger's standalone drag. When AtrocityEssentials' Minimap module is active, Ledger registers the same actions through LibDBIcon so its addon-button flyout or row manages the Ledger button.
 
 ## Installation
 
@@ -50,7 +50,7 @@ The board keeps manual completion: select a target and choose **Complete target*
 
 ### Synchronization
 
-The addon sends data only through the guild addon channel. It uses no external servers, accounts, or databases. Profiles synchronize on login, when professions change and when **Sync my profile** is selected.
+The addon sends data only through the guild addon channel. It uses no external servers, accounts, or databases. Profiles synchronize on login, when professions change and when **Sync my profile** is selected. When a member levels up, addon users receive a local `Name reached level X!` notification; nothing is sent to normal guild chat.
 
 Lagom Ledger retains its own `LAGOMLEDGER` protocol for profiles, bounties and casino games. It also translates the reference addon's `LagomGuild` `S`, `B`, `H`, and `D` messages into the same guild-specific `LagomLedgerDB` profiles and bounties. Casino messages are Ledger-only because the reference addon has no casino feature.
 
@@ -69,7 +69,7 @@ The host opens a lobby, guild members with the addon join it, and the host start
 
 ### Update notices
 
-At login, a member's profile includes the addon release number. During the initial synchronization window, a client with an older release displays a local chat message when it sees a newer release. A newer client also whispers a detected older client for compatibility with older installs. Notices are sent at most once per member for each session.
+At login, a member's profile includes the addon release number. During the initial synchronization window, a client with an older release displays a local chat message when it sees a newer release. Starting with v1.7.1, newer clients also send an internal `UPDATE_AVAILABLE` guild-addon message addressed to a detected older Ledger client; this message is understood by Ledger v1.7.1 and later. No normal chat whispers are sent. Legacy Lagom installs do not support this message and therefore do not receive update notices. Notices are sent at most once per member for each session.
 
 ## Commands
 
@@ -102,7 +102,7 @@ Every entrant must have at least the wager available in their bags before they c
 
 WoW Forever does not expose every ordinary combat-log event to addons. Lagom Ledger reads the client-reported honorable-kill total, but it cannot identify the player killed, the killer, or the zone. Automatic bounty completion is therefore a **best-effort** match: a tracked enemy bounty target must be observed dead shortly after a new honorable-kill credit. Use the manual bounty actions when that evidence is unavailable.
 
-Following the reference addon behavior, `PLAYER_DEAD` increases the local character's death total and synchronizes the updated profile to guild members with the addon. This includes deaths outside PvP. The addon records the current life from the last observed death or resurrection and preserves the longest completed life. An honorable-kill streak increases from the client's lifetime honorable-kill counter and resets only after a best-effort observed PvP death: the local client must have recently entered combat while targeting a hostile player. WoW Forever does not expose a reliable victim/killer API, so unobserved PvP deaths cannot safely reset a streak. Use `/lagom death` only for additions or corrections, so that a death is not recorded twice.
+Following the reference addon behavior, `PLAYER_DEAD` increases the local character's death total and synchronizes the updated profile to guild members with the addon. This includes deaths outside PvP. The addon records the current life from the last observed death or resurrection and preserves the longest completed life. An honorable-kill streak increases from the client's lifetime honorable-kill counter and resets only after a best-effort observed PvP death: the local client must have recently entered combat while targeting a hostile player. On such a death, addon users receive an internal PvP-death notice and the last observed hostile target is counted as that member's nemesis; the Deaths page also aggregates those records into a guild nemesis. WoW Forever does not expose a reliable victim/killer API, so the named killer is a hint rather than verified attribution, and unobserved PvP deaths cannot safely reset a streak. Use `/lagom death` only for additions or corrections, so that a death is not recorded twice.
 
 Guild addon messages are not a secure anti-cheat system. Treat the leaderboard as a shared guild honor board, not as authoritative statistics from the game server.
 
