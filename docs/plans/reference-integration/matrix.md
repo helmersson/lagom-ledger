@@ -26,7 +26,7 @@
 ## Resume checkpoint
 
 - Repository / branch: local repository has no commits; remote is `helmersson/lagom-ledger` `main`.
-- Working tree: untracked project files in this local initialization; remote contains v1.5.3.
+- Working tree: untracked project files in this local initialization; remote `main` contains v1.6.0.
 - Current slice: all implementation slices are complete; in-game acceptance remains.
 - Next executable action: install v1.6.0 in WoW Forever and run V-RI-003 and V-RI-005 with one player using the supplied reference addon.
 - Open questions / blockers: choose Witchcraft in-game or UIForever simulator; legacy exchange requires a second client with the reference addon.
