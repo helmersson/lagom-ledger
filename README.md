@@ -111,7 +111,7 @@ After making changes, run `/reload`, open `/lagom`, and test synchronization wit
 
 ## Releases
 
-GitHub Actions validates every pull request and push to `main`. Pushing an annotated tag named `v<version>` runs [BigWigsMods/packager](https://github.com/BigWigsMods/packager), verifies that the tag matches `## Version` in `LagomLedger/LagomLedger.toc`, packages the Forever addon, and creates a GitHub Release with the ZIP file.
+GitHub Actions validates every pull request and push to `main`. Pushing an annotated tag named `v<version>` runs [BigWigsMods/packager](https://github.com/BigWigsMods/packager), verifies that the tag matches `## Version` in `LagomLedger/LagomLedger.toc`, packages the Forever addon, and creates a GitHub Release with the ZIP file. The package contains only the installable `LagomLedger` folder.
 
 For example, after changing both release version fields to `1.6.1`:
 
