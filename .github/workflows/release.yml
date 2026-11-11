@@ -1,0 +1,48 @@
+name: Validate and release Lagom Ledger
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Static validation
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+      - name: Run compatibility contract
+        shell: pwsh
+        run: ./tests/ReferenceCompatibility.Contract.Tests.ps1
+
+  release:
+    name: Package and publish
+    needs: validate
+    if: github.ref_type == 'tag' && startsWith(github.ref_name, 'v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      GH_API_TOKEN: ${{ github.token }}
+    steps:
+      - name: Check out the tagged source
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Check tag matches the addon version
+        shell: bash
+        run: |
+          toc_version=$(awk -F ': ' '/^## Version:/ { print $2; exit }' LagomLedger/LagomLedger.toc)
+          test "v${toc_version}" = "${GITHUB_REF_NAME}"
+      - name: Package and create GitHub Release
+        uses: BigWigsMods/packager@v2
+        with:
+          args: -g forever
+
