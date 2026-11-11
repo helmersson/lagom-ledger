@@ -8,6 +8,7 @@ $casino = Get-Content -Raw (Join-Path $root 'LagomLedger\Casino.lua')
 $ellesmere = Get-Content -Raw (Join-Path $root 'LagomLedger\Ellesmere.lua')
 $toc = Get-Content -Raw (Join-Path $root 'LagomLedger\LagomLedger.toc')
 $workflow = Get-Content -Raw (Join-Path $root '.github\workflows\release.yml')
+$branchCleanup = Get-Content -Raw (Join-Path $root '.github\workflows\delete-merged-branch.yml')
 $packageMeta = Get-Content -Raw (Join-Path $root '.pkgmeta')
 $tocVersion = ([regex]::Match($toc, '(?m)^## Version: (.+)$')).Groups[1].Value.Trim()
 $coreRelease = ([regex]::Match($core, 'LL\.RELEASE = "([^"]+)"')).Groups[1].Value
@@ -165,6 +166,11 @@ Assert-Contains $workflow 'GH_API_TOKEN: ${{ github.token }}' 'GitHub release to
 Assert-Contains $workflow 'contents: write' 'release permission'
 Assert-Contains $workflow 'fetch-depth: 0' 'tag history checkout'
 Assert-Contains $workflow 'test "v${toc_version}" = "${GITHUB_REF_NAME}"' 'tag and TOC version check'
+Assert-Contains $branchCleanup 'types: [closed]' 'merged branch cleanup trigger'
+Assert-Contains $branchCleanup 'branches: [main]' 'main-only branch cleanup'
+Assert-Contains $branchCleanup 'github.event.pull_request.merged == true' 'merged PR cleanup guard'
+Assert-Contains $branchCleanup 'github.event.pull_request.head.repo.full_name == github.repository' 'same-repository cleanup guard'
+Assert-Contains $branchCleanup 'git/refs/heads/$BRANCH' 'merged branch deletion endpoint'
 Assert-Contains $packageMeta 'package-as: LagomLedger' 'package name'
 Assert-Contains $packageMeta 'LagomLedger/LagomLedger: LagomLedger' 'addon folder mapping'
 Assert-Contains $packageMeta '  - tests' 'test exclusion from release package'
