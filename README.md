@@ -118,9 +118,18 @@ Guild addon messages are not a secure anti-cheat system. Treat the leaderboard a
 
 - Target client: *World of Warcraft Forever*
 - Addon interface: `16001`
-- Main code: `LagomLedger/Core.lua`
-- Lagom compatibility: `LagomLedger/ReferenceCompatibility.lua`
-- Interface: `LagomLedger/UI.lua`
+- Module map (loaded in TOC order): `Core.lua` owns bootstrap, guild data, shared messaging and event routing; `Balance.lua` owns reward amounts, reset windows and balance transactions; `ReferenceCompatibility.lua` translates Lagom messages; `Casino.lua` and `CasinoGames.lua` own casino debts and game flow; `Ellesmere.lua` integrates settings and minimap providers; `UI.lua` builds the interface.
+
+### Secret protection
+
+Install Gitleaks and enable the repository's pre-commit hook before committing:
+
+```powershell
+winget install -e --id Gitleaks.Gitleaks
+git config core.hooksPath .githooks
+```
+
+The hook blocks commits containing detected secrets and fails closed if Gitleaks is missing. GitHub Actions also scans pull requests and pushes. For public repositories, GitHub push protection for users blocks supported secret patterns by default; it can be managed in your GitHub account's Secret Protection settings.
 
 After making changes, run `/reload`, open `/lagom`, and test synchronization with at least one other guild member who also has the addon installed.
 
@@ -128,7 +137,7 @@ After making changes, run `/reload`, open `/lagom`, and test synchronization wit
 
 GitHub Actions validates every pull request and push to `main`. After a pull request has been merged into `main`, its same-repository source branch is automatically deleted. Pushing an annotated tag named `v<version>` runs [BigWigsMods/packager](https://github.com/BigWigsMods/packager), verifies that the tag matches `## Version` in `LagomLedger/LagomLedger.toc`, packages the Forever addon, and creates a GitHub Release with the ZIP file. The package contains only the installable `LagomLedger` folder.
 
-For example, after changing both release version fields to `1.7.0`:
+For example, after setting `## Version` in the TOC to `1.7.0` (the addon reads its release version from this metadata):
 
 ```text
 git tag -a v1.7.0 -m "Lagom Ledger 1.7.0"

@@ -204,6 +204,9 @@ function LL:BuildUI()
     local navigationTitle = text(navigation, 10, unpack(JOURNAL.muted))
     navigationTitle:SetPoint("TOPLEFT", 12, -12)
     navigationTitle:SetText("GUILD RECORDS")
+    local versionLabel = text(navigation, 10, unpack(JOURNAL.muted))
+    versionLabel:SetPoint("BOTTOMLEFT", navigation, "BOTTOMLEFT", 10, 10)
+    versionLabel:SetText("v" .. LL.RELEASE)
     local content = makePanel(board)
     content:SetPoint("TOPLEFT", navigation, "TOPRIGHT", 10, 0)
     content:SetPoint("BOTTOMRIGHT", board, "BOTTOMRIGHT", -10, 10)
@@ -772,7 +775,7 @@ function LL:BuildBalanceUI()
     local graph = makePanel(frame)
     graph:SetPoint("TOPLEFT", 0, -42); graph:SetPoint("TOPRIGHT", 0, -42); graph:SetHeight(134)
     local graphTitle = text(graph, 11, unpack(JOURNAL.title))
-    graphTitle:SetPoint("TOPLEFT", 14, -11); graphTitle:SetText("NET GOLD BY PERIOD")
+    graphTitle:SetPoint("TOPLEFT", 14, -11); self.balanceGraphTitle = graphTitle
     local baseline = graph:CreateTexture(nil, "ARTWORK")
     baseline:SetColorTexture(unpack(JOURNAL.border)); baseline:SetHeight(1); baseline:SetPoint("LEFT", 14, 0); baseline:SetPoint("RIGHT", -14, 0); baseline:SetPoint("BOTTOM", 0, 61)
     local bars = {}
@@ -782,6 +785,13 @@ function LL:BuildBalanceUI()
         bars[index] = bar
     end
     self.balanceGraph, self.balanceGraphBars = graph, bars
+    local graphLabels = {}
+    for index, point in ipairs({ "LEFT", "CENTER", "RIGHT" }) do
+        local label = text(graph, 9, unpack(JOURNAL.muted))
+        label:SetPoint("BOTTOM" .. point, graph, "BOTTOM" .. point, 0, 8)
+        graphLabels[index] = label
+    end
+    self.balanceGraphLabels = graphLabels
 
     local transactions = makePanel(frame)
     transactions:SetPoint("TOPLEFT", graph, "BOTTOMLEFT", 0, -12); transactions:SetPoint("BOTTOMRIGHT", 0, 0)
@@ -801,6 +811,10 @@ end
 function LL:RefreshBalanceUI()
     if not self.balanceFrame or not self.db then return end
     local scope = self.balanceScope or "lifetime"
+    local graphLabels = scope == "daily" and { "00:00", "12:00", "Now" } or
+        (scope == "weekly" and { "Reset", "Midweek", "Now" } or { "Oldest", "Lifetime", "Now" })
+    self.balanceGraphTitle:SetText("NET GOLD — " .. scope:upper())
+    for index, label in ipairs(self.balanceGraphLabels) do label:SetText(graphLabels[index]) end
     local won, lost, net, transactions = self:GetBalanceSummary(scope)
     local color = net >= 0 and "|cff55dd55" or "|cffff5555"
     self.balanceSummary:SetText("YOUR ADDON BALANCE  Won: " .. self:FormatMoney(won) .. "  Lost: " .. self:FormatMoney(lost) .. "  Net: " .. color .. (net > 0 and "+" or "") .. self:FormatMoney(math.abs(net)) .. "|r")

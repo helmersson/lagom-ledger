@@ -16,3 +16,15 @@
 .DS_Store
 Thumbs.db
 desktop.ini
+
+# Local credentials and environment variables
+.env
+.env.*
+!.env.example
+
+# Local Graphify cache and transient state
+/graphify-out/cache/
+/graphify-out/.cloud-cta-shown
+/graphify-out/.graphify_analysis.json
+/graphify-out/.graphify_build_state.json
+/graphify-out/.graphify_labels.pending.json

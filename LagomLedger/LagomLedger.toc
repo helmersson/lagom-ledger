@@ -9,6 +9,7 @@
 ## AddonCompartmentFunc: LagomLedger_OnAddonCompartmentClick
 
 Core.lua
+Balance.lua
 ReferenceCompatibility.lua
 Casino.lua
 CasinoGames.lua

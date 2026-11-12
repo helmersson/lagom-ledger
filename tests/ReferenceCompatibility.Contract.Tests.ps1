@@ -2,6 +2,8 @@ $ErrorActionPreference = 'Stop'
 
 $root = Split-Path -Parent $PSScriptRoot
 $core = Get-Content -Raw (Join-Path $root 'LagomLedger\Core.lua')
+$balance = Get-Content -Raw (Join-Path $root 'LagomLedger\Balance.lua')
+$core = $core + $balance
 $compatibility = Get-Content -Raw (Join-Path $root 'LagomLedger\ReferenceCompatibility.lua')
 $ui = Get-Content -Raw (Join-Path $root 'LagomLedger\UI.lua')
 $casino = Get-Content -Raw (Join-Path $root 'LagomLedger\Casino.lua')
@@ -11,7 +13,6 @@ $workflow = Get-Content -Raw (Join-Path $root '.github\workflows\release.yml')
 $branchCleanup = Get-Content -Raw (Join-Path $root '.github\workflows\delete-merged-branch.yml')
 $packageMeta = Get-Content -Raw (Join-Path $root '.pkgmeta')
 $tocVersion = ([regex]::Match($toc, '(?m)^## Version: (.+)$')).Groups[1].Value.Trim()
-$coreRelease = ([regex]::Match($core, 'LL\.RELEASE = "([^"]+)"')).Groups[1].Value
 
 function Assert-Contains([string]$Text, [string]$Needle, [string]$Label) {
     if (-not $Text.Contains($Needle)) { throw "Missing ${Label}: $Needle" }
@@ -21,17 +22,30 @@ function Assert-NotContains([string]$Text, [string]$Needle, [string]$Label) {
     if ($Text.Contains($Needle)) { throw "Unexpected ${Label}: $Needle" }
 }
 
-if ($toc.IndexOf('Core.lua') -ge $toc.IndexOf('ReferenceCompatibility.lua') -or $toc.IndexOf('ReferenceCompatibility.lua') -ge $toc.IndexOf('Casino.lua')) {
+if ($toc.IndexOf('Core.lua') -ge $toc.IndexOf('Balance.lua') -or $toc.IndexOf('Balance.lua') -ge $toc.IndexOf('ReferenceCompatibility.lua') -or $toc.IndexOf('ReferenceCompatibility.lua') -ge $toc.IndexOf('Casino.lua')) {
     throw 'Invalid compatibility load order.'
 }
 Assert-Contains $toc '## AddonCompartmentFunc: LagomLedger_OnAddonCompartmentClick' 'addon compartment handler'
-if (-not $tocVersion -or $tocVersion -ne $coreRelease) { throw 'TOC and Core release versions must match.' }
+if (-not $tocVersion) { throw 'TOC release version must be present.' }
+Assert-Contains $core 'LL.RELEASE = (GetAddOnMetadata and GetAddOnMetadata(addonName, "Version")) or "0.0.0"' 'release version sourced from TOC metadata'
 Assert-Contains $compatibility 'LL.LEGACY_COMM_PREFIX = "LagomGuild"' 'reference addon prefix'
 Assert-Contains $compatibility '"S;%s;%d;%d;%d;%s;%s"' 'reference statistics protocol'
 Assert-Contains $compatibility '"B;%s;%s;%s;%d;%s;%s;%d;%s"' 'reference bounty protocol'
 Assert-Contains $compatibility '"PLAYER_PVP_KILLS_CHANGED"' 'honorable kill event'
 Assert-Contains $compatibility 'C_Timer.NewTicker(5' 'honorable kill fallback poll'
 Assert-Contains $compatibility 'function LL:ScanReferenceUnit(unit)' 'bounty target scan'
+Assert-Contains $compatibility 'self:Broadcast("BOUNTY_SIGHTING"' 'guild bounty sighting broadcast'
+if ($compatibility -notmatch 'function LL:PruneReferenceBounties\(\)\s+if not self\.db then return end') { throw 'Reference bounty pruning must tolerate a missing guild database.' }
+if ($compatibility -notmatch 'function LL:PruneReferenceMembers\(\)\s+if not self\.db or not self:IsLagomMember\(\)') { throw 'Reference member pruning must tolerate a missing guild database.' }
+Assert-Contains $core 'if LL.db or not LL:EnsureDatabase() then return end' 'delayed guild-database initialization'
+Assert-Contains $core 'if LL.OnReferenceGuildReady then LL:OnReferenceGuildReady() end' 'reference synchronization after delayed database initialization'
+Assert-Contains $compatibility 'if LL.db and prefix == LL.LEGACY_COMM_PREFIX' 'legacy messages ignored before database initialization'
+Assert-Contains $compatibility 'if not self.db or not self:IsLagomMember() then return end' 'legacy queue requires guild database'
+Assert-Contains $compatibility 'if LL.db == db and LL:IsLagomMember() then LL:SendLegacySnapshot() end' 'delayed snapshots stay in their original guild database'
+Assert-Contains $compatibility 'if not db or LL.db ~= db or not LL:IsLagomMember() then return end' 'delayed world-entry sync stays in its original guild database'
+Assert-Contains $compatibility 'function handlers.PLAYER_GUILD_UPDATE(unit)' 'guild-change compatibility handling'
+Assert-Contains $compatibility 'function LL:OnReferenceGuildReady()' 'shared compatibility readiness handler'
+Assert-Contains $compatibility 'self:QueueLegacyMessage("H", "H")' 'reference hello after guild becomes available'
 Assert-NotContains ($core + $compatibility) 'COMBAT_LOG_EVENT_UNFILTERED' 'forbidden combat-log registration'
 Assert-Contains $core 'primaryProfessions = player.primaryProfessions' 'native profile extension'
 Assert-NotContains $core 'LL.GUILD_NAME = "OG Lagom"' 'hard-coded guild name'
@@ -56,6 +70,8 @@ Assert-Contains $core 'function LL:ParseRewardCopper(value)' 'bounty gold-and-si
 Assert-Contains $core 'function LL:RecordBalanceTransaction(kind, settlement)' 'shared gold-transaction ledger'
 Assert-Contains $core 'elseif kind == "BOUNTY_DEBT" then' 'bounty debt synchronization protocol'
 Assert-Contains $core 'elseif kind == "BOUNTY_DEBT_PAID" then' 'bounty debt-payment protocol'
+Assert-Contains $core 'elseif kind == "BOUNTY_SIGHTING" then' 'bounty sighting serialization'
+Assert-Contains $core 'elseif kind == "BOUNTY_SIGHTING" and type(sender) == "string"' 'validated guild bounty sighting receiver'
 Assert-Contains $core 'weeklyReset = player.weeklyReset' 'weekly profile synchronization'
 Assert-Contains $core 'player.weeklyDeaths = (player.weeklyDeaths or 0) + 1' 'weekly death increment'
 Assert-Contains $core 'function LL:MergeDuplicatePlayers()' 'saved duplicate-player migration'
@@ -75,7 +91,18 @@ Assert-Contains $core 'function LL:RecordPvpKill(killer, victim)' 'per-member Pv
 Assert-Contains $core 'function LL:TopPvpVictim(killer)' 'individual PvP kill target lookup'
 Assert-Contains $core 'elseif kind == "PVP_KILL" then' 'PvP kill addon protocol'
 Assert-Contains $core 'elseif kind == "PVP_DEATH" then' 'PvP death addon protocol'
-Assert-Contains $core 'self:AnnouncePvpDeath(self.lastPvpOpponent)' 'PvP death notification'
+Assert-Contains $core 'self:SchedulePvpDeathNotice(self.lastPvpOpponent)' 'delayed PvP death notification'
+Assert-Contains $core 'function LL:GetDeathRecapKiller(observedOpponent)' 'defensive Death Recap lookup'
+Assert-Contains $core 'if type(api) ~= "function" then return end' 'missing Death Recap API fallback'
+Assert-Contains $core 'pcall(api)' 'protected Death Recap API access'
+Assert-Contains $core 'type(sourceName) == "string" and (not issecretvalue or not issecretvalue(sourceName))' 'secret-safe Death Recap source validation'
+Assert-Contains $core 'self:PlayerIdentityKey(sourceName) == self:PlayerIdentityKey(observedOpponent)' 'Death Recap source must match observed hostile player'
+Assert-Contains $core 'if readOk then return killer end' 'malformed Death Recap data is ignored'
+Assert-Contains $core 'function LL:SchedulePvpDeathNotice(probableOpponent)' 'guild-scoped delayed PvP notice'
+Assert-Contains $core 'self.db ~= database or not currentGuild or self:GetGuildKey(currentGuild) ~= guildKey' 'stale guild delayed notice guard'
+Assert-Contains $core '(probably; last observed hostile target)' 'uncertain target fallback label'
+Assert-Contains $core 'payload.confirmed and 1 or 0' 'PvP killer confidence protocol field'
+Assert-Contains $core 'if payload.confirmed then self:RecordNemesisDeath(payload.victim, payload.killer) end' 'nemesis requires confirmed PvP killer'
 Assert-Contains $core 'frame:RegisterEvent("PLAYER_ALIVE")' 'life restart event'
 Assert-Contains $core 'frame:RegisterEvent("PLAYER_REGEN_DISABLED")' 'PvP combat start event'
 Assert-Contains $core 'function LL:CompareRelease(release)' 'release comparison'
@@ -105,13 +132,17 @@ Assert-Contains $compatibility 'LL.legacyOutKeys, LL.legacyOutMessages = nil, ni
 Assert-Contains $ui 'local tabs = { "Kills", "Deaths", "Bounties", "Professions", "Casino", "Balance sheet" }' 'reference board, casino and balance tabs'
 Assert-Contains $ui 'local JOURNAL = {' 'DungeonJournal-inspired visual theme'
 Assert-Contains $ui 'local navigation = makePanel(board)' 'journal-style board navigation'
+Assert-Contains $ui 'versionLabel:SetText("v" .. LL.RELEASE)' 'main-window release version label'
 Assert-Contains $ui 'local recordsContent = CreateFrame("Frame", nil, content)' 'separate board content for tab switching'
 Assert-Contains $ui 'local winnersPanel = makePanel(results)' 'responsive journal-style casino winner panel'
 Assert-Contains $ui 'local historyPanel = makePanel(frame)' 'journal-style casino history panel'
 Assert-Contains $ui 'function LL:ToggleCasino()' 'retained casino entry point'
 Assert-Contains $ui 'function LL:BuildBalanceUI()' 'separate balance-sheet page'
 Assert-Contains $ui 'function LL:RefreshBalanceUI()' 'balance-sheet refresh'
-Assert-Contains $ui 'NET GOLD BY PERIOD' 'balance-sheet graph'
+Assert-Contains $ui 'NET GOLD — " .. scope:upper()' 'scope-specific balance graph title'
+Assert-Contains $ui '{ "00:00", "12:00", "Now" }' 'daily graph time labels'
+Assert-Contains $ui '{ "Reset", "Midweek", "Now" }' 'weekly graph time labels'
+Assert-Contains $ui '{ "Oldest", "Lifetime", "Now" }' 'lifetime graph time labels'
 Assert-Contains $ui 'Prepare mail' 'balance-sheet mail preparation control'
 Assert-Contains $ui 'local function setFont(instance, size, flags)' 'Expressway font fallback helper'
 Assert-Contains $ui 'instance:SetFont(FALLBACK_FONT, size, flags or "")' 'Friz fallback font'

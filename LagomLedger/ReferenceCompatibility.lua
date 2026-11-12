@@ -31,6 +31,17 @@ local function clean(value, maxBytes)
     return value
 end
 
+local function safeLocation(value, getter)
+    if type(value) ~= "string" then
+        if type(getter) ~= "function" then return "" end
+        local ok
+        ok, value = pcall(getter)
+        if not ok then return "" end
+    end
+    if type(value) ~= "string" or isSecret(value) then return "" end
+    return clean(value, 64)
+end
+
 function LL:LegacyNamesMatch(left, right)
     return fold(shortName(left)) == fold(shortName(right))
 end
@@ -121,7 +132,7 @@ function LL:CollectReferenceProfile()
 end
 
 function LL:QueueLegacyMessage(key, message)
-    if not self:IsLagomMember() then return end
+    if not self.db or not self:IsLagomMember() then return end
     self.legacyOutKeys = self.legacyOutKeys or {}
     self.legacyOutMessages = self.legacyOutMessages or {}
     if not self.legacyOutMessages[key] then table.insert(self.legacyOutKeys, key) end
@@ -129,7 +140,7 @@ function LL:QueueLegacyMessage(key, message)
 end
 
 function LL:PumpLegacyMessages()
-    if not self:IsLagomMember() or not C_ChatInfo or not self.legacyOutKeys or #self.legacyOutKeys == 0 then return end
+    if not self.db or not self:IsLagomMember() or not C_ChatInfo or not self.legacyOutKeys or #self.legacyOutKeys == 0 then return end
     local key = self.legacyOutKeys[1]
     local ok, result = pcall(C_ChatInfo.SendAddonMessage, self.LEGACY_COMM_PREFIX, self.legacyOutMessages[key], "GUILD")
     if ok and result ~= false and (type(result) ~= "number" or result == 0) then
@@ -162,6 +173,7 @@ function LL:SendLegacyBounty(bounty)
 end
 
 function LL:SendLegacySnapshot()
+    if not self.db then return end
     self:SendLegacyStats()
     for _, bounty in ipairs(self.db.bounties) do self:SendLegacyBounty(bounty) end
     self:QueueLegacyMessage("D", "D")
@@ -300,11 +312,19 @@ function LL:ReceiveLegacyMessage(message, sender)
         end
     elseif kind == "H" then
         local delay = 1 + math.random() * 4
-        if C_Timer and C_Timer.After then C_Timer.After(delay, function() LL:SendLegacySnapshot() end) else self:SendLegacySnapshot() end
+        local db = self.db
+        if C_Timer and C_Timer.After then
+            C_Timer.After(delay, function()
+                if LL.db == db and LL:IsLagomMember() then LL:SendLegacySnapshot() end
+            end)
+        else
+            self:SendLegacySnapshot()
+        end
     end
 end
 
 function LL:PruneReferenceBounties()
+    if not self.db then return end
     local cutoff = now()
     for index = #self.db.bounties, 1, -1 do
         local bounty = self.db.bounties[index]
@@ -314,7 +334,7 @@ function LL:PruneReferenceBounties()
 end
 
 function LL:PruneReferenceMembers()
-    if not self:IsLagomMember() or not GetNumGuildMembers or not GetGuildRosterInfo then return end
+    if not self.db or not self:IsLagomMember() or not GetNumGuildMembers or not GetGuildRosterInfo then return end
     local total = GetNumGuildMembers()
     if not total or total == 0 then return end
     local roster = {}
@@ -328,18 +348,39 @@ function LL:PruneReferenceMembers()
     end
 end
 
+function LL:OnReferenceGuildReady()
+    if not self.db or not self:IsLagomMember() then return end
+    self:PruneReferenceBounties()
+    self:CollectReferenceProfile()
+    self:QueueLegacyMessage("H", "H")
+    self:CheckReferenceKills()
+end
+
 function LL:OpenReferenceBountyFor(name)
     for _, bounty in ipairs(self.db.bounties) do
         if bounty.active and self:BountyTargetMatches(bounty.target, name) then return bounty end
     end
 end
 
-function LL:AlertReferenceBounty(bounty)
-    local key, timestamp = fold(bounty.target), GetTime()
+function LL:AlertReferenceBounty(bounty, zone, subzone, reporter)
+    local timestamp = GetTime()
+    zone, subzone = safeLocation(zone, GetZoneText), safeLocation(subzone, GetSubZoneText)
+    reporter = type(reporter) == "string" and clean(reporter, 80) or nil
+    local key = fold(table.concat({ bounty.target, zone, subzone }, "|"))
+    if not reporter then
+        self.referenceBountyBroadcasts = self.referenceBountyBroadcasts or {}
+        if not self.referenceBountyBroadcasts[key] or timestamp - self.referenceBountyBroadcasts[key] >= 60 then
+            self.referenceBountyBroadcasts[key] = timestamp
+            self:Broadcast("BOUNTY_SIGHTING", { target = bounty.target, zone = zone, subzone = subzone, spottedAt = now() })
+        end
+    end
     self.referenceBountyAlerts = self.referenceBountyAlerts or {}
-    if self.referenceBountyAlerts[key] and timestamp - self.referenceBountyAlerts[key] < 60 then return end
+    if self.referenceBountyAlerts[key] and timestamp - self.referenceBountyAlerts[key] < 30 then return end
     self.referenceBountyAlerts[key] = timestamp
-    local text = ("Bounty target nearby: %s (posted by %s)"):format(bounty.target, bounty.postedBy)
+    local location = zone ~= "" and zone or "Unknown zone"
+    if subzone ~= "" and subzone ~= zone then location = location .. ", " .. subzone end
+    local text = reporter and ("Bounty target spotted by " .. reporter .. ": " .. bounty.target .. " — " .. location)
+        or ("Bounty target nearby: " .. bounty.target .. " — " .. location .. " (posted by " .. bounty.postedBy .. ")")
     if UIErrorsFrame and UIErrorsFrame.AddMessage then UIErrorsFrame:AddMessage(text, 1, 0.3, 0.3) end
     self:Print("|cffff5555" .. text .. "|r")
     if PlaySound and SOUNDKIT and SOUNDKIT.RAID_WARNING then pcall(PlaySound, SOUNDKIT.RAID_WARNING) end
@@ -360,7 +401,7 @@ function LL:TryReferenceBountyCompletion()
 end
 
 function LL:ScanReferenceUnit(unit)
-    if not self:IsLagomMember() or not UnitExists(unit) or not UnitIsPlayer(unit) or not UnitIsEnemy("player", unit) then return end
+    if not self.db or not self:IsLagomMember() or not UnitExists(unit) or not UnitIsPlayer(unit) or not UnitIsEnemy("player", unit) then return end
     local name = UnitName(unit)
     if type(name) ~= "string" or isSecret(name) then return end
     if UnitIsDeadOrGhost(unit) then
@@ -425,10 +466,7 @@ local handlers = {}
 
 function handlers.PLAYER_LOGIN()
     if C_ChatInfo then C_ChatInfo.RegisterAddonMessagePrefix(LL.LEGACY_COMM_PREFIX) end
-    LL:PruneReferenceBounties()
-    LL:CollectReferenceProfile()
-    LL:QueueLegacyMessage("H", "H")
-    LL:CheckReferenceKills()
+    LL:OnReferenceGuildReady()
     if not LL.legacyTicker and C_Timer and C_Timer.NewTicker then
         LL.legacyTicker = C_Timer.NewTicker(1.1, function() LL:PumpLegacyMessages() end)
     end
@@ -440,8 +478,10 @@ end
 function handlers.PLAYER_ENTERING_WORLD()
     LL:CheckReferenceKills()
     if C_Timer and C_Timer.After then
+        local db = LL.db
         for _, delay in ipairs({ 3, 10, 30 }) do
             C_Timer.After(delay, function()
+                if not db or LL.db ~= db or not LL:IsLagomMember() then return end
                 LL:CheckReferenceKills()
                 LL:RefreshLocalProfile()
             end)
@@ -454,7 +494,8 @@ function handlers.PLAYER_GUILD_UPDATE(unit)
     if unit ~= "player" then return end
     LL.legacyOutKeys, LL.legacyOutMessages = nil, nil
     LL.referenceRecentDeaths, LL.referenceKillCredit, LL.referenceKillVictimAt = nil, nil, nil
-    LL:RefreshLocalProfile()
+    LL:OnReferenceGuildReady()
+    if LL.db then LL:RefreshLocalProfile() end
 end
 
 function handlers.GUILD_ROSTER_UPDATE()
@@ -462,7 +503,7 @@ function handlers.GUILD_ROSTER_UPDATE()
 end
 
 function handlers.CHAT_MSG_ADDON(prefix, message, channel, sender)
-    if prefix == LL.LEGACY_COMM_PREFIX and channel == "GUILD" and LL:IsLagomMember() then LL:ReceiveLegacyMessage(message, sender) end
+    if LL.db and prefix == LL.LEGACY_COMM_PREFIX and channel == "GUILD" and LL:IsLagomMember() then LL:ReceiveLegacyMessage(message, sender) end
 end
 
 function handlers.PLAYER_PVP_KILLS_CHANGED()
@@ -488,7 +529,14 @@ function handlers.UNIT_HEALTH(unit)
 end
 
 function handlers.PLAYER_LEVEL_UP()
-    if C_Timer and C_Timer.After then C_Timer.After(1, function() LL:RefreshLocalProfile() end) else LL:RefreshLocalProfile() end
+    if C_Timer and C_Timer.After then
+        local db = LL.db
+        C_Timer.After(1, function()
+            if LL.db == db and db and LL:IsLagomMember() then LL:RefreshLocalProfile() end
+        end)
+    else
+        LL:RefreshLocalProfile()
+    end
 end
 
 for _, event in ipairs({ "PLAYER_LOGIN", "PLAYER_ENTERING_WORLD", "PLAYER_GUILD_UPDATE", "GUILD_ROSTER_UPDATE", "CHAT_MSG_ADDON",
