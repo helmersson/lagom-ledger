@@ -786,9 +786,9 @@ function LL:BuildBalanceUI()
     end
     self.balanceGraph, self.balanceGraphBars = graph, bars
     local graphLabels = {}
-    for index, point in ipairs({ "LEFT", "CENTER", "RIGHT" }) do
+    for index, point in ipairs({ "BOTTOMLEFT", "BOTTOM", "BOTTOMRIGHT" }) do
         local label = text(graph, 9, unpack(JOURNAL.muted))
-        label:SetPoint("BOTTOM" .. point, graph, "BOTTOM" .. point, 0, 8)
+        label:SetPoint(point, graph, point, 0, 8)
         graphLabels[index] = label
     end
     self.balanceGraphLabels = graphLabels
