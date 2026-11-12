@@ -2,7 +2,11 @@ local _, LL = ...
 
 local W, H, ROWS, ROW_H = 780, 630, 15, 22
 local CONTENT_W = 568
-local FONT = "Fonts\\FRIZQT__.TTF"
+local FALLBACK_FONT = "Fonts\\FRIZQT__.TTF"
+local EXPRESSWAY_FONTS = {
+    { addon = "EllesmereUI", path = "Interface\\AddOns\\EllesmereUI\\media\\fonts\\Expressway.TTF" },
+    { addon = "atrocityEssentials", path = "Interface\\AddOns\\atrocityEssentials\\Media\\Fonts\\Expressway.TTF" },
+}
 local board, currentTab, offset, tabButtons, rows, entry, footer, refreshBoard, layoutBoard, constrainBoard, leaderboardScope
 
 local JOURNAL = {
@@ -25,6 +29,16 @@ local function makePanel(parent, background)
     return panel
 end
 
+local function setFont(instance, size, flags)
+    for _, candidate in ipairs(EXPRESSWAY_FONTS) do
+        if C_AddOns and C_AddOns.IsAddOnLoaded then
+            local _, loaded = C_AddOns.IsAddOnLoaded(candidate.addon)
+            if loaded == true and instance:SetFont(candidate.path, size, flags or "") then return end
+        end
+    end
+    instance:SetFont(FALLBACK_FONT, size, flags or "")
+end
+
 local function makeButton(parent, label, width, height)
     local button = CreateFrame("Button", nil, parent, "UIPanelButtonTemplate")
     button:SetSize(width, height)
@@ -41,7 +55,7 @@ local function makeNavigationButton(parent, label, iconPath)
     button.icon:SetSize(22, 22)
     button.icon:SetPoint("LEFT", 9, 0)
     button.label = button:CreateFontString(nil, "OVERLAY")
-    button.label:SetFont(FONT, 12, "")
+    setFont(button.label, 12, "")
     button.label:SetPoint("LEFT", button.icon, "RIGHT", 8, 0)
     button.label:SetPoint("RIGHT", -7, 0)
     button.label:SetJustifyH("LEFT")
@@ -62,7 +76,7 @@ end
 
 local function text(parent, size, red, green, blue)
     local label = parent:CreateFontString(nil, "OVERLAY")
-    label:SetFont(FONT, size, "")
+    setFont(label, size, "")
     label:SetShadowColor(0, 0, 0, 1)
     label:SetShadowOffset(1, -1)
     label:SetTextColor(red or 1, green or 1, blue or 1)
@@ -749,7 +763,7 @@ function LL:BuildBalanceUI()
     local scopeButtons = {}
     for index, scope in ipairs({ "lifetime", "weekly", "daily" }) do
         local button = makeButton(frame, scope == "lifetime" and "Lifetime" or scope:gsub("^%l", string.upper), scope == "lifetime" and 72 or 60, 22)
-        button:SetPoint("TOPRIGHT", -14 - (#scopeButtons == 0 and 0 or (scopeButtons[#scopeButtons]:GetWidth() + 6)), -10)
+        if #scopeButtons == 0 then button:SetPoint("TOPRIGHT", -14, -10) else button:SetPoint("TOPRIGHT", scopeButtons[#scopeButtons], "TOPLEFT", -6, 0) end
         button:SetScript("OnClick", function() LL.balanceScope = scope; LL:RefreshBalanceUI() end)
         table.insert(scopeButtons, button)
     end

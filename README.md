@@ -76,7 +76,7 @@ Outstanding casino and bounty debts are paid from this tab. At a mailbox, select
 
 ### Update notices
 
-At login, a member's profile includes the addon release number. During the initial synchronization window, a client with an older release displays a local chat message when it sees a newer release. Starting with v1.7.1, newer clients also send an internal `UPDATE_AVAILABLE` guild-addon message addressed to a detected older Ledger client; this message is understood by Ledger v1.7.1 and later. No normal chat whispers are sent. Legacy Lagom installs do not support this message and therefore do not receive update notices. Notices are sent at most once per member for each session.
+At login, v1.7.2 and later announce their release on the internal `LagomLedgerVer` guild-addon prefix. A newer release gives the receiving client one local chat notice and is remembered for three days, so it is shown again after a later login. Older Ledger installations still receive the existing profile-sync notice when compatible; very old Lagom installs cannot understand the new version prefix. No normal-chat whispers are sent.
 
 ## Commands
 

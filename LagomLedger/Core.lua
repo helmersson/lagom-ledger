@@ -3,9 +3,11 @@ local addonName, LL = ...
 LL.ADDON_NAME = addonName
 LL.GUILD_NAME = nil
 LL.COMM_PREFIX = "LAGOMLEDGER"
+LL.VERSION_COMM_PREFIX = "LagomLedgerVer"
 LL.VERSION = 1
-LL.RELEASE = "1.7.1"
+LL.RELEASE = "1.7.2"
 LL.versionNoticeSent = {}
+LL.VERSION_REMEMBER_FOR = 3 * 24 * 60 * 60
 
 local function now()
     return time()
@@ -187,13 +189,17 @@ function LL:Print(message)
 end
 
 function LL:CompareRelease(release)
-    if not release or release == "" then return -1 end
     local function parts(value)
-        local major, minor, patch = value:match("^(%d+)%.(%d+)%.?(%d*)$")
-        return tonumber(major) or 0, tonumber(minor) or 0, tonumber(patch) or 0
+        if type(value) ~= "string" or #value > 16 then return end
+        local major, minor, patch = value:match("^(%d+)%.(%d+)%.(%d+)$")
+        if not major then major, minor = value:match("^(%d+)%.(%d+)$"); patch = "0" end
+        major, minor, patch = tonumber(major), tonumber(minor), tonumber(patch)
+        if not major or not minor or not patch or major > 99 or minor > 999 or patch > 999 then return end
+        return major, minor, patch
     end
     local currentMajor, currentMinor, currentPatch = parts(self.RELEASE)
     local remoteMajor, remoteMinor, remotePatch = parts(release)
+    if not currentMajor or not remoteMajor then return end
     if remoteMajor ~= currentMajor then return remoteMajor < currentMajor and -1 or 1 end
     if remoteMinor ~= currentMinor then return remoteMinor < currentMinor and -1 or 1 end
     if remotePatch ~= currentPatch then return remotePatch < currentPatch and -1 or 1 end
@@ -201,19 +207,82 @@ function LL:CompareRelease(release)
 end
 
 function LL:IsOlderRelease(release)
-    return self:CompareRelease(release) < 0
+    return self:CompareRelease(release) == -1
 end
 
 function LL:IsNewerRelease(release)
-    return self:CompareRelease(release) > 0
+    return self:CompareRelease(release) == 1
+end
+
+function LL:ShowUpdateNotice(release)
+    local noticeKey = "update:" .. release
+    if self.versionNoticeSent[noticeKey] then return end
+    self.versionNoticeSent[noticeKey] = true
+    self:Print("Update available: Lagom Ledger " .. release .. " is available.")
+end
+
+function LL:RememberNewerRelease(release)
+    if not self.db or not self:IsNewerRelease(release) then return end
+    local known = self.db.newestSeenRelease
+    if not known or self:IsNewerRelease(known) then self.db.newestSeenRelease = release end
+    if self.db.newestSeenRelease == release then self.db.newestSeenReleaseAt = now() end
+end
+
+function LL:CheckSavedRelease()
+    if not self.db then return end
+    local release, heardAt = self.db.newestSeenRelease, tonumber(self.db.newestSeenReleaseAt)
+    if release and heardAt and now() - heardAt < self.VERSION_REMEMBER_FOR and self:IsNewerRelease(release) then
+        self:ShowUpdateNotice(release)
+    elseif release then
+        self.db.newestSeenRelease, self.db.newestSeenReleaseAt = nil, nil
+    end
+end
+
+function LL:SendVersion(channel)
+    if channel ~= "GUILD" or not self:IsLagomMember() or not C_ChatInfo or not C_ChatInfo.SendAddonMessage then return end
+    local sentAt = self.versionMessageSentAt or {}
+    if sentAt[channel] and GetTime and GetTime() - sentAt[channel] < 10 then return end
+    self.versionMessageSentAt = sentAt
+    sentAt[channel] = GetTime and GetTime() or 0
+    pcall(C_ChatInfo.SendAddonMessage, self.VERSION_COMM_PREFIX, self.RELEASE, channel)
+end
+
+function LL:ScheduleVersionReply(channel)
+    if channel ~= "GUILD" then return end
+    self.pendingVersionReply = self.pendingVersionReply or {}
+    if self.pendingVersionReply[channel] then return end
+    self.pendingVersionReply[channel] = true
+    if C_Timer and C_Timer.After then
+        C_Timer.After(1 + math.random() * 4, function()
+            if LL.pendingVersionReply and LL.pendingVersionReply[channel] then
+                LL.pendingVersionReply[channel] = nil
+                LL:SendVersion(channel)
+            end
+        end)
+    else
+        self.pendingVersionReply[channel] = nil
+        self:SendVersion(channel)
+    end
+end
+
+function LL:OnVersionMessage(message, channel, sender)
+    if channel ~= "GUILD" or self:PlayerIdentityKey(sender) == self:PlayerIdentityKey(self:PlayerName()) then return end
+    if self:IsNewerRelease(message) then
+        self:RememberNewerRelease(message)
+        if self.loginUpdateCheck then self:ShowUpdateNotice(message) end
+    elseif self:IsOlderRelease(message) then
+        self:ScheduleVersionReply(channel)
+    elseif self.pendingVersionReply then
+        self.pendingVersionReply[channel] = nil
+    end
 end
 
 function LL:NotifyOutdatedMember(sender, release)
     if self.versionNoticeSent[sender] then return end
     if self.loginUpdateCheck and self:IsNewerRelease(release) then
         self.versionNoticeSent[sender] = true
-        self.versionNoticeSent["update:" .. release] = true
-        self:Print("Update available: " .. sender .. " uses Lagom Ledger " .. release .. "; you use " .. self.RELEASE .. ".")
+        self:RememberNewerRelease(release)
+        self:ShowUpdateNotice(release)
         return
     end
     if not release or release == "" or not self:IsOlderRelease(release) then return end
@@ -691,11 +760,8 @@ function LL:OnComm(prefix, message, channel, sender)
         player.level = payload.level
         self:Print(payload.name .. " reached level " .. payload.level .. "!")
     elseif kind == "UPDATE_AVAILABLE" and payload.target and payload.release and self:PlayerIdentityKey(payload.target) == self:PlayerIdentityKey(self:PlayerName()) and self:IsNewerRelease(payload.release) then
-        local noticeKey = "update:" .. payload.release
-        if not self.versionNoticeSent[noticeKey] then
-            self.versionNoticeSent[noticeKey] = true
-            self:Print("Update available: Lagom Ledger " .. payload.release .. " is available.")
-        end
+        self:RememberNewerRelease(payload.release)
+        self:ShowUpdateNotice(payload.release)
     elseif kind == "PVP_KILL" and payload.killer and payload.victim then
         self:RecordPvpKill(payload.killer, payload.victim)
     elseif kind == "PVP_DEATH" and payload.victim then
@@ -747,8 +813,11 @@ function LL:OnEvent(event, ...)
     if event == "PLAYER_LOGIN" then
         self:EnsureDatabase()
         C_ChatInfo.RegisterAddonMessagePrefix(self.COMM_PREFIX)
+        C_ChatInfo.RegisterAddonMessagePrefix(self.VERSION_COMM_PREFIX)
         self.loginUpdateCheck = true
+        self:CheckSavedRelease()
         if C_Timer and C_Timer.After then C_Timer.After(20, function() LL.loginUpdateCheck = false end) end
+        if C_Timer and C_Timer.After then C_Timer.After(8, function() LL:SendVersion("GUILD") end) end
         self.inCombat = UnitAffectingCombat and UnitAffectingCombat("player") or false
         self:NotePvpCombat()
         if self.RegisterEllesmerePlugin then self:RegisterEllesmerePlugin() end
@@ -770,7 +839,12 @@ function LL:OnEvent(event, ...)
     elseif event == "PLAYER_ALIVE" and self.db then
         self:StartNewLife()
     elseif event == "CHAT_MSG_ADDON" and self.db then
-        self:OnComm(...)
+        local prefix, message, channel, sender = ...
+        if prefix == self.VERSION_COMM_PREFIX then
+            self:OnVersionMessage(message, channel, sender)
+        else
+            self:OnComm(prefix, message, channel, sender)
+        end
     elseif event == "CHAT_MSG_SYSTEM" and self.db and self.HandleRollMessage then
         self:HandleRollMessage(...)
     elseif event == "SKILL_LINES_CHANGED" and self.db then
