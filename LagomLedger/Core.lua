@@ -5,29 +5,12 @@ LL.GUILD_NAME = nil
 LL.COMM_PREFIX = "LAGOMLEDGER"
 LL.VERSION_COMM_PREFIX = "LagomLedgerVer"
 LL.VERSION = 1
-LL.RELEASE = "1.7.2"
+LL.RELEASE = (GetAddOnMetadata and GetAddOnMetadata(addonName, "Version")) or "0.0.0"
 LL.versionNoticeSent = {}
 LL.VERSION_REMEMBER_FOR = 3 * 24 * 60 * 60
 
 local function now()
     return time()
-end
-
-function LL:GetWeeklyResetStart()
-    local reset = C_DateAndTime and C_DateAndTime.GetWeeklyResetStartTime and C_DateAndTime.GetWeeklyResetStartTime()
-    if type(reset) == "number" then return reset end
-    local serverTime = GetServerTime and GetServerTime() or now()
-    return math.floor(serverTime / 604800) * 604800
-end
-
-function LL:EnsureWeeklyStats(player)
-    local reset = self:GetWeeklyResetStart()
-    if tonumber(player.weeklyReset) ~= reset then
-        player.weeklyReset, player.weeklyKills, player.weeklyDeaths = reset, 0, 0
-    else
-        player.weeklyKills = tonumber(player.weeklyKills) or 0
-        player.weeklyDeaths = tonumber(player.weeklyDeaths) or 0
-    end
 end
 
 function LL:PlayerName()
@@ -37,87 +20,6 @@ end
 
 function LL:PlayerIdentityKey(name)
     return strlower((strtrim(name or ""):match("^([^%-%s]+)") or ""))
-end
-
-function LL:ParseRewardCopper(value)
-    local reward = strtrim(tostring(value or "")):gsub(",", ".")
-    local gold, fraction = reward:match("^(%d+)%.(%d%d?)$")
-    if not gold then gold = reward:match("^(%d+)$") end
-    if not gold then return end
-    local silver = fraction and tonumber(fraction) * (#fraction == 1 and 10 or 1) or 0
-    local copper = tonumber(gold) * 10000 + silver * 100
-    return copper > 0 and copper or nil
-end
-
-function LL:FormatMoney(copper)
-    copper = math.max(0, math.floor(tonumber(copper) or 0))
-    local gold, silver = math.floor(copper / 10000), math.floor(copper % 10000 / 100)
-    return gold .. "g " .. silver .. "s"
-end
-
-function LL:GetDailyResetStart()
-    return math.floor((GetServerTime and GetServerTime() or now()) / 86400) * 86400
-end
-
-function LL:BalanceTransactionKey(kind, settlement)
-    return table.concat({ kind or "", settlement.id or "", settlement.winner or "", settlement.loser or "", tonumber(settlement.amountCopper) or 0 }, "|")
-end
-
-function LL:RecordBalanceTransaction(kind, settlement)
-    if not self.db or not settlement or not settlement.id or not settlement.winner or not settlement.loser then return end
-    local amount = tonumber(settlement.amountCopper) or 0
-    if amount <= 0 then return end
-    local key = self:BalanceTransactionKey(kind, settlement)
-    for _, transaction in ipairs(self.db.balanceTransactions) do
-        if transaction.key == key then return transaction end
-    end
-    local transaction = { key = key, kind = kind, sourceId = settlement.id, winner = settlement.winner, loser = settlement.loser,
-        amountCopper = amount, target = settlement.target, at = settlement.createdAt or settlement.finishedAt or now(), paidAt = settlement.paidAt }
-    table.insert(self.db.balanceTransactions, transaction)
-    return transaction
-end
-
-function LL:MarkBalanceTransactionPaid(kind, settlement, paidAt)
-    local key = self:BalanceTransactionKey(kind, settlement)
-    for _, transaction in ipairs((self.db and self.db.balanceTransactions) or {}) do
-        if transaction.key == key then transaction.paidAt = paidAt or now(); return end
-    end
-end
-
-function LL:GetBalanceTransactions(scope, name)
-    local start = scope == "daily" and self:GetDailyResetStart() or (scope == "weekly" and self:GetWeeklyResetStart() or 0)
-    local identity, transactions = self:PlayerIdentityKey(name or self:PlayerName()), {}
-    for _, transaction in ipairs((self.db and self.db.balanceTransactions) or {}) do
-        local at = tonumber(transaction.at) or 0
-        if at >= start then
-            local delta = self:PlayerIdentityKey(transaction.winner) == identity and transaction.amountCopper or
-                (self:PlayerIdentityKey(transaction.loser) == identity and -transaction.amountCopper or nil)
-            if delta then table.insert(transactions, { transaction = transaction, delta = delta }) end
-        end
-    end
-    table.sort(transactions, function(left, right) return (left.transaction.at or 0) > (right.transaction.at or 0) end)
-    return transactions, start
-end
-
-function LL:GetBalanceSummary(scope, name)
-    local won, lost, transactions = 0, 0, self:GetBalanceTransactions(scope, name)
-    for _, entry in ipairs(transactions) do
-        if entry.delta > 0 then won = won + entry.delta else lost = lost - entry.delta end
-    end
-    return won, lost, won - lost, transactions
-end
-
-function LL:GetBalanceGraph(scope, name)
-    local transactions, start = self:GetBalanceTransactions(scope, name)
-    local current = GetServerTime and GetServerTime() or now()
-    if scope == "lifetime" and #transactions > 0 then start = transactions[#transactions].transaction.at or current end
-    local span = math.max(1, current - start + 1)
-    local values = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 }
-    for _, entry in ipairs(transactions) do
-        local index = math.min(12, math.max(1, math.floor(((entry.transaction.at or current) - start) / span * 12) + 1))
-        values[index] = values[index] + entry.delta
-    end
-    return values
 end
 
 function LL:MergePlayerRecords(primary, duplicate)
@@ -444,7 +346,7 @@ function LL:Serialize(kind, payload)
     elseif kind == "PVP_KILL" then
         return table.concat({ self:Escape(payload.killer), self:Escape(payload.victim) }, ";")
     elseif kind == "PVP_DEATH" then
-        return table.concat({ self:Escape(payload.victim), self:Escape(payload.killer) }, ";")
+        return table.concat({ self:Escape(payload.victim), self:Escape(payload.killer), payload.confirmed and 1 or 0 }, ";")
     elseif kind == "BOUNTY_ADD" then
         return table.concat({ self:Escape(payload.id), self:Escape(payload.target), self:Escape(payload.note), self:Escape(payload.postedBy), payload.createdAt or now(), payload.rewardCopper or 0 }, ";")
     elseif kind == "BOUNTY_COMPLETE" then
@@ -453,6 +355,11 @@ function LL:Serialize(kind, payload)
         return table.concat({ self:Escape(payload.id), self:Escape(payload.winner), self:Escape(payload.loser), payload.amountCopper or 0, self:Escape(payload.target), payload.createdAt or now() }, ";")
     elseif kind == "BOUNTY_DEBT_PAID" then
         return table.concat({ self:Escape(payload.id), self:Escape(payload.paidBy), payload.paidAt or now() }, ";")
+    elseif kind == "BOUNTY_SIGHTING" then
+        local function escapeField(value)
+            return tostring(value or ""):gsub("%%", "%%25"):gsub(";", "%%3B"):gsub("|", "%%7C"):gsub("[\r\n]", " ")
+        end
+        return table.concat({ escapeField(payload.target), escapeField(payload.zone), escapeField(payload.subzone), payload.spottedAt or now() }, ";")
     elseif kind == "CASINO_STAT" then
         return table.concat({ self:Escape(payload.name), payload.wonGold or 0, payload.lostGold or 0, payload.games or 0 }, ";")
     elseif kind == "CASINO_GAME_OPEN" then
@@ -490,7 +397,7 @@ function LL:Decode(message)
     elseif kind == "PVP_KILL" then
         return kind, { killer = self:Unescape(fields[1]), victim = self:Unescape(fields[2]) }
     elseif kind == "PVP_DEATH" then
-        return kind, { victim = self:Unescape(fields[1]), killer = self:Unescape(fields[2]) }
+        return kind, { victim = self:Unescape(fields[1]), killer = self:Unescape(fields[2]), confirmed = tonumber(fields[3]) == 1 }
     elseif kind == "BOUNTY_ADD" then
         return kind, { id = self:Unescape(fields[1]), target = self:Unescape(fields[2]), note = self:Unescape(fields[3]), postedBy = self:Unescape(fields[4]), createdAt = tonumber(fields[5]), rewardCopper = tonumber(fields[6]) or 0, active = true }
     elseif kind == "BOUNTY_COMPLETE" then
@@ -499,6 +406,8 @@ function LL:Decode(message)
         return kind, { id = self:Unescape(fields[1]), winner = self:Unescape(fields[2]), loser = self:Unescape(fields[3]), amountCopper = tonumber(fields[4]), target = self:Unescape(fields[5]), createdAt = tonumber(fields[6]) }
     elseif kind == "BOUNTY_DEBT_PAID" then
         return kind, { id = self:Unescape(fields[1]), paidBy = self:Unescape(fields[2]), paidAt = tonumber(fields[3]) }
+    elseif kind == "BOUNTY_SIGHTING" then
+        return kind, { target = self:Unescape(fields[1]), zone = self:Unescape(fields[2]), subzone = self:Unescape(fields[3]), spottedAt = tonumber(fields[4]) }
     elseif kind == "REQUEST_SYNC" then
         return kind, {}
     elseif kind == "CASINO_STAT" then
@@ -587,14 +496,52 @@ function LL:AnnouncePvpKill(victim)
     self:Broadcast("PVP_KILL", payload)
 end
 
-function LL:AnnouncePvpDeath(lastOpponent)
+function LL:GetDeathRecapKiller(observedOpponent)
+    local api = C_DeathRecap and C_DeathRecap.GetRecapEvents
+    if type(api) ~= "function" then return end
+    local ok, events = pcall(api)
+    if not ok or type(events) ~= "table" then return end
+
+    -- DeathRecapEventInfo has no published field schema for this client build.
+    -- The reference addon reads sourceName, so probe it defensively and only
+    -- accept it when it matches a hostile player observed during this combat.
+    local killer
+    local readOk = pcall(function()
+        for _, event in ipairs(events) do
+            local sourceName = type(event) == "table" and event.sourceName or nil
+            if type(sourceName) == "string" and (not issecretvalue or not issecretvalue(sourceName)) then
+                if observedOpponent and self:PlayerIdentityKey(sourceName) == self:PlayerIdentityKey(observedOpponent) then
+                    killer = sourceName
+                    break
+                end
+            end
+        end
+    end)
+    if readOk then return killer end
+end
+
+function LL:AnnouncePvpDeath(recapKiller, probableOpponent)
     if not self.db then return end
-    local payload = { victim = self:PlayerName(), killer = lastOpponent or "" }
-    self:RecordNemesisDeath(payload.victim, payload.killer)
+    local confirmed = type(recapKiller) == "string" and recapKiller ~= ""
+    local killer = confirmed and recapKiller or (type(probableOpponent) == "string" and probableOpponent or "")
+    local payload = { victim = self:PlayerName(), killer = killer, confirmed = confirmed }
+    if confirmed then self:RecordNemesisDeath(payload.victim, payload.killer) end
     local message = payload.victim .. " died in PvP"
-    if payload.killer ~= "" then message = message .. " to " .. payload.killer .. " (last observed hostile target)" end
+    if killer ~= "" then
+        message = message .. " to " .. killer .. (confirmed and "" or " (probably; last observed hostile target)")
+    end
     self:Print(message .. ".")
     self:Broadcast("PVP_DEATH", payload)
+end
+
+function LL:SchedulePvpDeathNotice(probableOpponent)
+    local database, guildKey = self.db, self.GUILD_NAME and self:GetGuildKey(self.GUILD_NAME)
+    local function announce()
+        local currentGuild = self:GetGuildName()
+        if not database or self.db ~= database or not currentGuild or self:GetGuildKey(currentGuild) ~= guildKey then return end
+        self:AnnouncePvpDeath(self:GetDeathRecapKiller(probableOpponent), probableOpponent)
+    end
+    if C_Timer and C_Timer.After then C_Timer.After(0.7, announce) else announce() end
 end
 
 function LL:StartNewLife()
@@ -765,9 +712,11 @@ function LL:OnComm(prefix, message, channel, sender)
     elseif kind == "PVP_KILL" and payload.killer and payload.victim then
         self:RecordPvpKill(payload.killer, payload.victim)
     elseif kind == "PVP_DEATH" and payload.victim then
-        self:RecordNemesisDeath(payload.victim, payload.killer)
+        if payload.confirmed then self:RecordNemesisDeath(payload.victim, payload.killer) end
         local message = payload.victim .. " died in PvP"
-        if payload.killer and payload.killer ~= "" then message = message .. " to " .. payload.killer .. " (last observed hostile target)" end
+        if payload.killer and payload.killer ~= "" then
+            message = message .. " to " .. payload.killer .. (payload.confirmed and "" or " (probably; last observed hostile target)")
+        end
         self:Print(message .. ".")
     elseif kind == "BOUNTY_ADD" and payload.id and payload.target then
         for _, bounty in ipairs(self.db.bounties) do
@@ -789,6 +738,15 @@ function LL:OnComm(prefix, message, channel, sender)
         self:ApplyBountySettlement(payload)
     elseif kind == "BOUNTY_DEBT_PAID" then
         self:ApplyBountyDebtPayment(payload)
+    elseif kind == "BOUNTY_SIGHTING" and type(sender) == "string" and #sender <= 80 and type(payload.target) == "string" and #payload.target <= 80 and type(payload.zone) == "string" and #payload.zone <= 80 and type(payload.subzone) == "string" and #payload.subzone <= 80 then
+        local spottedAt = tonumber(payload.spottedAt)
+        if not spottedAt or spottedAt < now() - 120 or spottedAt > now() + 30 then return end
+        for _, bounty in ipairs(self.db.bounties) do
+            if bounty.active and self:BountyTargetMatches(bounty.target, payload.target) then
+                self:AlertReferenceBounty(bounty, payload.zone, payload.subzone, sender)
+                break
+            end
+        end
     elseif string.sub(kind or "", 1, 12) == "CASINO_GAME_" and self.OnCasinoGameMessage then
         self:OnCasinoGameMessage(kind, payload)
     elseif string.sub(kind or "", 1, 7) == "CASINO_" and self.OnCasinoMessage then
@@ -817,6 +775,15 @@ function LL:OnEvent(event, ...)
         self.loginUpdateCheck = true
         self:CheckSavedRelease()
         if C_Timer and C_Timer.After then C_Timer.After(20, function() LL.loginUpdateCheck = false end) end
+        if not self.db and C_Timer and C_Timer.After then
+            C_Timer.After(1, function()
+                if LL.db or not LL:EnsureDatabase() then return end
+                LL:CheckSavedRelease()
+                if LL.OnReferenceGuildReady then LL:OnReferenceGuildReady() end
+                LL:RefreshLocalProfile()
+                LL:Broadcast("REQUEST_SYNC", {})
+            end)
+        end
         if C_Timer and C_Timer.After then C_Timer.After(8, function() LL:SendVersion("GUILD") end) end
         self.inCombat = UnitAffectingCombat and UnitAffectingCombat("player") or false
         self:NotePvpCombat()
@@ -833,7 +800,7 @@ function LL:OnEvent(event, ...)
         self:NotePvpCombat()
     elseif event == "PLAYER_DEAD" and self.db then
         local pvpCombat = self:WasRecentPvpCombat()
-        if pvpCombat then self:AnnouncePvpDeath(self.lastPvpOpponent) end
+        if pvpCombat then self:SchedulePvpDeathNotice(self.lastPvpOpponent) end
         self:RecordDeath(pvpCombat)
         self.inCombat, self.lastPvpCombatAt, self.lastPvpOpponent = false, nil, nil
     elseif event == "PLAYER_ALIVE" and self.db then
@@ -856,6 +823,7 @@ function LL:OnEvent(event, ...)
         if unit == "player" then
             self:EnsureDatabase()
             if self.db then
+                if self.OnReferenceGuildReady then self:OnReferenceGuildReady() end
                 if self.UpdateMinimapButton then self:UpdateMinimapButton() end
                 self:RefreshLocalProfile()
                 self:Broadcast("REQUEST_SYNC", {})

@@ -13,7 +13,7 @@
 
 ## Release procedure
 
-1. Update `LL.RELEASE` and `## Version` to the same version, for example `1.7.0`.
+1. Update `## Version` in `LagomLedger/LagomLedger.toc`, for example to `1.7.0`. The addon reads its release version from this metadata.
 2. Push the version commit to `main`.
 3. Create and push an annotated tag with the same version prefixed by `v`:
 
