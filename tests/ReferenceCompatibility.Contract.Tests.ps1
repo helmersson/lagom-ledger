@@ -104,7 +104,7 @@ Assert-Contains $core 'function LL:SendProfessionSnapshot(snapshot, channel, tar
 Assert-Contains $core 'function LL:ReceiveProfessionChunk(sender, message, channel)' 'recipe chunk receiver validation'
 Assert-Contains $core 'function LL:ResolveProfessionIdentity(name)' 'profession identity resolves against guild roster'
 Assert-Contains $core 'local canonical = rosterName' 'profession canonical identity preserves roster realm suffix'
-Assert-Contains $core 'if self:PlayerIdentityKey(sender) == self:PlayerIdentityKey(self:PlayerName()) then return end' 'generic addon self-message filtering retains existing identity behavior'
+Assert-Contains $core 'if self:GuildIdentityMatches(sender, self:PlayerName()) then return end' 'generic addon self-message filtering uses realm-aware identity validation'
 Assert-Contains $core 'if index[alias] ~= canonical then' 'ambiguous guild identity aliases are rejected'
 Assert-Contains $core 'local first = canonical:match("^(%S+)")' 'sender first-name alias resolves only when roster match is unique'
 Assert-Contains $core 'function LL:MergeProfessionCatalogAliases()' 'old profession identity aliases merge without dropping recipes'
