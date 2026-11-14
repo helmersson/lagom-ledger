@@ -13,6 +13,7 @@ Review scope: recently changed addon code and the Core, reference-compatibility,
 - `Core.lua` currently coordinates events, profile synchronization, combat tracking, version messages, guild storage and shared serialization.
 - `ReferenceCompatibility.lua` adds cross-addon behavior by wrapping Core functions and registering its own event frame.
 - `Balance.lua` owns the shared balance transaction ledger and summary calculations; casino and bounty settlement lifecycle remains in their existing modules.
+- Casino totals can still be counted twice when an aggregate stat snapshot arrives before a previously unknown settlement for that same total. Fixing this safely needs a migration/reconciliation design for legacy aggregate-only peers; changing message order alone would not cover delayed or repeated messages.
 - These candidates are observations for discussion. No module interfaces are proposed yet.
 
 ## Top recommendation

@@ -1,5 +1,7 @@
 local _, LL = ...
 
+local function now() return time() end
+
 LL.CASINO_GAME_MODES = {
     { key = "Classic", label = "Classic", minPlayers = 2, description = "Highest roll wins the difference between the highest and lowest rolls." },
     { key = "DeathRoll", label = "Death Roll", minPlayers = 2, maxPlayers = 2, description = "Take turns rolling 1 to the last roll. Rolling 1 loses." },
@@ -11,16 +13,23 @@ function LL:GetCasinoGameMode(key)
 end
 
 function LL:GetGroupCasinoGame()
-    return self.db.casinoGroupGame
+    local game = self.db.casinoGroupGame
+    local lastActivity = tonumber(game and game.lastActivityAt) or tonumber(game and game.createdAt) or now()
+    if game and now() - lastActivity >= 600 then
+        self.db.casinoGroupGame = nil
+        if self:GuildIdentityMatches(game.host, self:PlayerName()) then self:Broadcast("CASINO_GAME_CLOSE", { id = game.id }) end
+        return nil
+    end
+    return game
 end
 
 function LL:IsGroupCasinoHost(game)
-    return game and self:NamesMatch(game.host, self:PlayerName())
+    return game and self:GuildIdentityMatches(game.host, self:PlayerName())
 end
 
 function LL:FindGroupPlayer(game, name)
     for _, player in ipairs(game.players or {}) do
-        if self:NamesMatch(player, name) then return player end
+        if self:GuildIdentityMatches(player, name) then return player end
     end
 end
 
@@ -43,14 +52,14 @@ function LL:OpenCasinoGame(modeKey, wager)
         self:Print("Choose a mode and a whole-number wager between 1 and " .. self.CASINO_MAX_WAGER .. " gold.")
         return false
     end
-    if self.db.casinoGroupGame then
+    if self:GetGroupCasinoGame() then
         self:Print("A guild casino game is already open. Join it, or wait for the host to finish it.")
         return false
     end
     if not self:HasGoldForCasino(wager) then return false end
-    local id = self:PlayerName() .. "-game-" .. self.db.nextCasinoId
-    self.db.nextCasinoId = self.db.nextCasinoId + 1
-    local game = { id = id, host = self:PlayerName(), mode = mode.key, wager = wager, createdAt = time(), status = "lobby", players = { self:PlayerName() }, playerSet = { [self:PlayerName()] = true } }
+    local id = self:NewRecordID("G")
+    local openedAt = now()
+    local game = { id = id, host = self:PlayerName(), mode = mode.key, wager = wager, createdAt = openedAt, lastActivityAt = openedAt, status = "lobby", players = { self:PlayerName() }, playerSet = { [self:PlayerName()] = true } }
     self.db.casinoGroupGame = game
     self:Broadcast("CASINO_GAME_OPEN", game)
     self:Print(mode.label .. " lobby opened for " .. wager .. " gold. Guild members with the addon can join from /lagom casino.")
@@ -67,7 +76,8 @@ function LL:JoinCasinoGame()
     if not self:HasGoldForCasino(game.wager) then return false end
     table.insert(game.players, self:PlayerName())
     game.playerSet[self:PlayerName()] = true
-    self:Broadcast("CASINO_GAME_JOIN", { id = game.id, player = self:PlayerName() })
+    game.lastActivityAt = now()
+    self:Broadcast("CASINO_GAME_JOIN", { id = game.id, player = self:PlayerName(), lastActivityAt = game.lastActivityAt })
     self:RefreshUI()
     return true
 end
@@ -82,9 +92,11 @@ function LL:CloseCasinoGame()
 end
 
 function LL:SetCasinoGameState(game, phase, minRoll, maxRoll, turn, message)
+    if not self:IsGroupCasinoHost(game) then return false end
     game.status, game.phase = "running", phase
     game.minRoll, game.maxRoll, game.turn, game.message = minRoll or 0, maxRoll or 0, turn or "", message or ""
-    self:Broadcast("CASINO_GAME_STATE", { id = game.id, phase = game.phase, minRoll = game.minRoll, maxRoll = game.maxRoll, turn = game.turn, message = game.message })
+    game.lastActivityAt = now()
+    self:Broadcast("CASINO_GAME_STATE", { id = game.id, phase = game.phase, minRoll = game.minRoll, maxRoll = game.maxRoll, turn = game.turn, message = game.message, lastActivityAt = game.lastActivityAt })
     self:RefreshUI()
 end
 
@@ -181,37 +193,46 @@ function LL:ResolveEliminationRound(game)
 end
 
 function LL:FinishCasinoGame(game, summary, debts)
-    local result = { id = game.id, mode = game.mode, host = game.host, wager = game.wager, finishedAt = time(), summary = summary }
+    local result = { id = game.id, mode = game.mode, host = game.host, wager = game.wager, finishedAt = time(), summary = summary, accountingVersion = 2 }
     self:ApplyCasinoGameResult(result)
     self:Broadcast("CASINO_GAME_RESULT", result)
     for _, debt in ipairs(debts or {}) do
-        local settlement = { id = game.id, winner = debt.winner, loser = debt.loser, amount = debt.amount, amountCopper = debt.amount * 10000, createdAt = result.finishedAt }
+        local settlement = { id = game.id, winner = debt.winner, loser = debt.loser, amount = debt.amount, amountCopper = debt.amount * 10000, createdAt = result.finishedAt, accountingVersion = 2 }
         self:ApplyCasinoSettlement(settlement)
         self:Broadcast("CASINO_GAME_SETTLE", settlement)
     end
 end
 
 function LL:ApplyCasinoGameResult(result)
-    if not result.id or self.db.casinoProcessedGames[result.id] then return end
+    if type(result.id) ~= "string" or result.id == "" or type(result.summary) ~= "string" or self.db.casinoProcessedGames[result.id] then return end
     self.db.casinoProcessedGames[result.id] = true
-    self.db.casinoGroupGame = nil
-    table.insert(self.db.casinoHistory, 1, result)
+    if self.db.casinoGroupGame and self.db.casinoGroupGame.id == result.id then self.db.casinoGroupGame = nil end
+    local resultTime = tonumber(result.finishedAt) or 0
+    local index = 1
+    while index <= #self.db.casinoHistory and (tonumber(self.db.casinoHistory[index].finishedAt) or 0) >= resultTime do index = index + 1 end
+    table.insert(self.db.casinoHistory, index, result)
     while #self.db.casinoHistory > 5 do table.remove(self.db.casinoHistory) end
     self:Print(result.summary)
     self:RefreshUI()
 end
 
 function LL:ApplyCasinoSettlement(settlement)
-    if not settlement.id or not settlement.winner or not settlement.loser or not settlement.amount then return end
+    local amount = tonumber(settlement.amount)
+    if type(settlement.id) ~= "string" or settlement.id == "" or type(settlement.winner) ~= "string" or type(settlement.loser) ~= "string"
+        or not amount or amount < 0 or amount > self.CASINO_MAX_WAGER or amount ~= math.floor(amount) then return end
+    if settlement.accountingVersion ~= 2 then return end
+    settlement.amount = amount
     settlement.amountCopper = settlement.amountCopper or settlement.amount * 10000
     local key = self:CasinoSettlementKey(settlement)
     self.db.casinoSettlements[settlement.id] = self.db.casinoSettlements[settlement.id] or {}
     if self.db.casinoSettlements[settlement.id][key] then return end
     self.db.casinoSettlements[settlement.id][key] = settlement
     self:RecordBalanceTransaction("casino", settlement)
-    local winner, loser = self:GetCasinoStats(settlement.winner), self:GetCasinoStats(settlement.loser)
-    winner.wonGold, winner.games = winner.wonGold + settlement.amount, winner.games + 1
-    loser.lostGold, loser.games = loser.lostGold + settlement.amount, loser.games + 1
+    if not settlement.baselineIncluded then
+        local winner, loser = self:GetCasinoStats(settlement.winner), self:GetCasinoStats(settlement.loser)
+        winner.wonGold, winner.games = winner.wonGold + settlement.amount, winner.games + 1
+        loser.lostGold, loser.games = loser.lostGold + settlement.amount, loser.games + 1
+    end
     self:RefreshUI()
 end
 
@@ -231,7 +252,9 @@ function LL:ProcessCasinoGameRoll(game, payload)
     if game.turn ~= "" and not self:NamesMatch(game.turn, player) then return end
     if game.pending and not game.pending[player] then return end
     if game.rolls and game.rolls[player] then return end
+    game.lastActivityAt = now()
     game.rolls = game.rolls or {}; game.rolls[player] = payload.roll
+    self:Broadcast("CASINO_GAME_STATE", { id = game.id, phase = game.phase, minRoll = game.minRoll, maxRoll = game.maxRoll, turn = game.turn, message = game.message, lastActivityAt = game.lastActivityAt })
     if game.phase == "deathroll" or game.phase == "elimination-final" then
         if payload.roll == 1 then
             local players = game.phase == "deathroll" and game.players or game.finalists
@@ -255,36 +278,67 @@ end
 function LL:HandleCasinoGameRoll(player, roll, low, high)
     local game = self:GetGroupCasinoGame()
     if not game or game.status ~= "running" or low ~= game.minRoll or high ~= game.maxRoll or not self:FindGroupPlayer(game, player) then return end
-    local payload = { id = game.id, player = player, roll = roll, minRoll = low, maxRoll = high }
-    if self:IsGroupCasinoHost(game) then self:ProcessCasinoGameRoll(game, payload) end
-    self:Broadcast("CASINO_GAME_ROLL", payload)
+    local payload = { id = game.id, player = player, roll = roll, minRoll = low, maxRoll = high, activityAt = now() }
+    if self:GuildIdentityMatches(player, self:PlayerName()) then
+        if self:IsGroupCasinoHost(game) then self:ProcessCasinoGameRoll(game, payload) end
+        self:Broadcast("CASINO_GAME_ROLL", payload)
+    elseif self:IsGroupCasinoHost(game) then
+        self:ProcessCasinoGameRoll(game, payload)
+    end
 end
 
-function LL:OnCasinoGameMessage(kind, payload)
+function LL:OnCasinoGameMessage(kind, payload, sender)
     if kind == "CASINO_GAME_RESULT" then
+        if not self:GuildIdentityMatches(payload.host, sender) then return end
         self:ApplyCasinoGameResult(payload)
         self:RefreshUI()
         return
     elseif kind == "CASINO_GAME_SETTLE" then
+        local result
+        for _, entry in ipairs(self.db.casinoHistory) do if entry.id == payload.id then result = entry; break end end
+        if payload.accountingVersion ~= 2 or not result or not self:GuildIdentityMatches(result.host, sender) then return end
+        self:ApplyCasinoSettlement(payload)
+        self:RefreshUI()
+        return
+    elseif kind == "CASINO_GAME_SETTLE_BASELINE" then
+        local result
+        for _, entry in ipairs(self.db.casinoHistory) do if entry.id == payload.id then result = entry; break end end
+        if payload.accountingVersion ~= 2 or not result or not self:GuildIdentityMatches(result.host, sender) then return end
+        payload.baselineIncluded = true
         self:ApplyCasinoSettlement(payload)
         self:RefreshUI()
         return
     elseif kind == "CASINO_GAME_DEBT_PAID" then
+        if not self:GuildIdentityMatches(payload.paidBy, sender) then return end
         self:ApplyCasinoDebtPayment(payload)
         self:RefreshUI()
         return
     end
     local game = self:GetGroupCasinoGame()
     if kind == "CASINO_GAME_OPEN" then
-        if not game then self.db.casinoGroupGame = { id = payload.id, host = payload.host, mode = payload.mode, wager = payload.wager, createdAt = payload.createdAt, status = "lobby", players = { payload.host }, playerSet = { [payload.host] = true } } end
+        if type(payload.id) ~= "string" or payload.id == "" or #payload.id > 70 or not self:GetCasinoGameMode(payload.mode)
+            or not tonumber(payload.wager) or payload.wager < 1 or payload.wager > self.CASINO_MAX_WAGER
+            or not tonumber(payload.createdAt) then return end
+        if not self:GuildIdentityMatches(payload.host, sender) then return end
+        if not game then self.db.casinoGroupGame = { id = payload.id, host = payload.host, mode = payload.mode, wager = payload.wager, createdAt = payload.createdAt, lastActivityAt = payload.lastActivityAt or payload.createdAt, status = "lobby", players = { payload.host }, playerSet = { [payload.host] = true } } end
     elseif kind == "CASINO_GAME_CLOSE" then
-        if game and game.id == payload.id then self.db.casinoGroupGame = nil end
+        if type(payload.id) ~= "string" then return end
+        if game and game.id == payload.id and self:GuildIdentityMatches(game.host, sender) then self.db.casinoGroupGame = nil end
     elseif not game or game.id ~= payload.id then return
     elseif kind == "CASINO_GAME_JOIN" and game.status == "lobby" then
+        if type(payload.player) ~= "string" or payload.player == "" then return end
+        if not (self:GuildIdentityMatches(payload.player, sender) or self:GuildIdentityMatches(game.host, sender)) then return end
         if not self:FindGroupPlayer(game, payload.player) then table.insert(game.players, payload.player); game.playerSet[payload.player] = true end
+        game.lastActivityAt = tonumber(payload.lastActivityAt) or game.lastActivityAt or game.createdAt
     elseif kind == "CASINO_GAME_STATE" then
+        if not self:GuildIdentityMatches(game.host, sender) then return end
+        if type(payload.phase) ~= "string" or not tonumber(payload.minRoll) or not tonumber(payload.maxRoll) or type(payload.turn) ~= "string" then return end
         game.status, game.phase, game.minRoll, game.maxRoll, game.turn, game.message = "running", payload.phase, payload.minRoll, payload.maxRoll, payload.turn, payload.message
+        game.lastActivityAt = tonumber(payload.lastActivityAt) or game.lastActivityAt or game.createdAt
     elseif kind == "CASINO_GAME_ROLL" and self:IsGroupCasinoHost(game) then
+        if type(payload.player) ~= "string" or not tonumber(payload.roll) or not tonumber(payload.minRoll) or not tonumber(payload.maxRoll) then return end
+        if not self:GuildIdentityMatches(payload.player, sender) then return end
+        payload.roll, payload.minRoll, payload.maxRoll = tonumber(payload.roll), tonumber(payload.minRoll), tonumber(payload.maxRoll)
         self:ProcessCasinoGameRoll(game, payload)
     end
     self:RefreshUI()
@@ -294,16 +348,20 @@ function LL:SendCasinoGameSync()
     local game = self:GetGroupCasinoGame()
     if game and self:IsGroupCasinoHost(game) then
         self:Broadcast("CASINO_GAME_OPEN", game)
-        for index = 2, #game.players do self:Broadcast("CASINO_GAME_JOIN", { id = game.id, player = game.players[index] }) end
+        for index = 2, #game.players do self:Broadcast("CASINO_GAME_JOIN", { id = game.id, player = game.players[index], lastActivityAt = game.lastActivityAt }) end
         if game.status == "running" then self:Broadcast("CASINO_GAME_STATE", game) end
     end
     for _, result in ipairs(self.db.casinoHistory) do
-        if result.mode and result.summary then
+        local isHost = self:GuildIdentityMatches(result.host, self:PlayerName())
+        if result.mode and result.summary and isHost then
             self:Broadcast("CASINO_GAME_RESULT", result)
             for _, settlement in pairs(self.db.casinoSettlements[result.id] or {}) do
-                self:Broadcast("CASINO_GAME_SETTLE", settlement)
-                if settlement.paidAt then self:Broadcast("CASINO_GAME_DEBT_PAID", settlement) end
+                if settlement.baselineIncluded then self:Broadcast("CASINO_GAME_SETTLE_BASELINE", settlement)
+                else self:Broadcast("CASINO_GAME_SETTLE", settlement) end
             end
+        end
+        for _, settlement in pairs(self.db.casinoSettlements[result.id] or {}) do
+            if settlement.paidAt and self:GuildIdentityMatches(settlement.paidBy, self:PlayerName()) then self:Broadcast("CASINO_GAME_DEBT_PAID", settlement) end
         end
     end
 end

@@ -1,6 +1,6 @@
 # Lagom Ledger
 
-**Lagom Ledger** is a guild addon for *World of Warcraft Forever*. It gives each guild a shared PvP leaderboard and a bounty board for Alliance players.
+**Lagom Ledger** is a guild addon for *World of Warcraft Forever*. It gives each guild shared PvP leaderboards, a learned-recipe catalog, an Alliance bounty board, casino games and a balance sheet.
 
 It is compatible with the supplied **Lagom** addon (v1.0.2): players can use either addon and share guild-board profiles and bounties. Lagom Ledger remains the single addon to install when casino, the minimap button and EllesmereUI integration are wanted.
 
@@ -10,7 +10,7 @@ When [EllesmereUI](https://github.com/EllesmereGaming/EllesmereUI) is installed,
 
 ## Installation
 
-1. Download or clone this project.
+1. Download the latest `LagomLedger.zip` from the project's GitHub Releases page.
 2. Copy the `LagomLedger` folder into the WoW Forever addon directory:
 
    ```text
@@ -33,7 +33,6 @@ The leaderboard displays each addon user's:
 - current honorable-kill streak
 - most-recorded PvP kill target (**Nemesis**) on the Kills tab
 - recorded deaths, current life duration and longest completed life
-- known professions
 
 The **Kills** and **Deaths** tabs each add a centered top-three strip with the members' recorded class portraits.
 
@@ -41,19 +40,21 @@ Both PvP tabs include an **All time / Weekly** toggle. Weekly kills and deaths r
 
 The board follows the Lagom layout: dedicated **Kills**, **Deaths**, **Bounties**, **Professions**, **Casino**, and **Balance sheet** tabs, a draggable framed window and mouse-wheel scrolling. Kills are updated from the character's honorable-kill lifetime counter; deaths use the client's total-death statistic and the local death event.
 
+The **Professions** tab has a profession list, searchable recipe list and a panel showing who can craft a selected recipe. When available, recipe details also show the required materials for one craft: each row gives the required quantity, and alternative items are separated by **or**. Optional and hidden materials are omitted. Item IDs may appear temporarily while item names load. First Aid, Mining, Skinning, Herbalism and Fishing are intentionally omitted. Recipe catalogs include only learned recipes that guild members have shared.
+
 Lagom Ledger also keeps its draggable minimap button: left-click opens the guild board and right-click opens the **Casino** tab. The casino shares the guild-board window and is also available from its navigation tab and `/lagom casino`. Drag the lower-right corner of the main window to resize it; the guild table, navigation buttons and casino leaderboard panels expand with the available space. The window is bounded by the current screen; select **Reset size** or run `/lagom reset` to restore the default size and centered position.
 
 ### Bounty board
 
 Enter an Alliance character name and a required **reward** as `gold.silver`, for example `12.34` for 12 gold and 34 silver. Online members of the current guild with the addon receive the bounty through guild addon messages. When a user logs in, the addon automatically requests the active bounty list.
 
-The board keeps manual completion: select a target and choose **Complete target**, or choose **Complete** on an active bounty row. The poster can choose **Remove**. When a bounty is claimed, its poster receives a matching outstanding debt to the claimant in **Balance sheet**, ready to prepare as a Blizzard mail. When the addon sees a bounty target dead shortly after a new honorable-kill credit, it automatically completes matching bounties and announces nearby bounty targets once per minute.
+The board keeps manual completion: select a target and choose **Complete target**, or choose **Complete** on an active bounty row. The poster can choose **Remove**. When a bounty is claimed, its poster receives a matching outstanding debt to the claimant in **Balance sheet**, ready to prepare as a Blizzard mail. When an active bounty target appears on a visible enemy nameplate, addon users receive an internal guild-addon notice with the target's zone and subzone. This only works while the client exposes the player on a nameplate; hidden, distant, or otherwise unavailable players cannot be detected. Sightings are rate-limited. When the addon sees a bounty target dead shortly after a new honorable-kill credit, it automatically completes matching bounties.
 
 ### Synchronization
 
-The addon sends data only through the guild addon channel. It uses no external servers, accounts, or databases. Profiles synchronize on login, when professions change and when **Sync my profile** is selected. When a member levels up, addon users receive a local `Name reached level X!` notification; nothing is sent to normal guild chat.
+The addon uses hidden WoW addon messages and no external servers, accounts, or databases. Profiles synchronize on login and when `/lagom sync` is used. Learned recipes and available material data are captured when a member opens their own profession; material data is sent separately from the recipe catalog. `/lagom sync` can request already-saved recipe and material data from online guild members. The request uses the guild addon channel and catalog replies use private addon `WHISPER` messages; neither appears as normal chat. There is no login or periodic profession-data backfill. If a catalog was saved before material sharing was available, its owner must open that profession with the updated addon; recipients can then run `/lagom sync` while the owner is online. If the client cannot enumerate recipes, the owner gets a local scan diagnostic and existing catalog data is kept. When a member levels up, addon users receive a local `Name reached level X!` notification; nothing is sent to normal guild chat.
 
-Lagom Ledger retains its own `LAGOMLEDGER` protocol for profiles, bounties and casino games. It also translates the reference addon's `LagomGuild` `S`, `B`, `H`, and `D` messages into the same guild-specific `LagomLedgerDB` profiles and bounties. Casino messages are Ledger-only because the reference addon has no casino feature.
+Lagom Ledger retains its own `LAGOMLEDGER` protocol for profiles, bounties, professions and casino games. It imports the reference addon's `LagomGuild` `S`, `B` and `H` messages into the same guild-specific `LagomLedgerDB` profiles and bounties. Ledger sends `D` as a snapshot-complete marker for the reference addon; it does not import incoming `D` messages. Casino messages are Ledger-only because the reference addon has no casino feature.
 
 ### Guild casino
 
@@ -68,6 +69,8 @@ The casino window runs guild games through the game's `/roll` system. It include
 
 The host opens a lobby, guild members with the addon join it, and the host starts the selected game. The casino balance is casino-only; bounty rewards do not change its won/lost lists.
 
+Casino totals retain each updated client's saved pre-upgrade totals as a baseline and count new versioned settlements once by settlement ID. To avoid double-counting ambiguous old cumulative snapshots and settlement replays, updated clients ignore unversioned casino-stat and settlement messages from older addon versions. For consistent totals, all guild members need the updated addon; existing local totals are preserved during migration.
+
 ### Balance sheet
 
 **Balance sheet** records the current character's casino settlements and claimed bounty rewards. It shows gold won, gold lost and net change through the addon, plus a twelve-bar net-gold graph and a transaction list. Choose **Daily**, **Weekly**, or **Lifetime**: daily begins at midnight server time, weekly begins at the server's weekly reset, and lifetime retains every recorded transaction.
@@ -76,7 +79,7 @@ Outstanding casino and bounty debts are paid from this tab. At a mailbox, select
 
 ### Update notices
 
-At login, v1.7.2 and later announce their release on the internal `LagomLedgerVer` guild-addon prefix. A newer release gives the receiving client one local chat notice and is remembered for three days, so it is shown again after a later login. Older Ledger installations still receive the existing profile-sync notice when compatible; very old Lagom installs cannot understand the new version prefix. No normal-chat whispers are sent.
+At login, v1.7.2 and later announce their release on the internal `LagomLedgerVer` guild-addon prefix. A newer release gives the receiving client one local chat notice and is remembered for three days, so it is shown again after a later login. Older Ledger installations still receive the existing profile-sync notice when compatible; very old Lagom installs cannot understand the new version prefix. Update notices do not use normal chat; profession recovery uses hidden addon whispers as described above.
 
 ## Commands
 
@@ -91,8 +94,8 @@ At login, v1.7.2 and later announce their release on the internal `LagomLedgerVe
 | `/lagom balance` | Open the Balance sheet tab. |
 | `/lagom reset` | Restore the main window's default size and centered position. |
 | `/lagom settings` | Open the Lagom Ledger section in EllesmereUI, when EllesmereUI is installed. |
-| `/lagom sync` | Send your profile and professions to other addon users in the guild. |
-| `/lagom debug` | Show the guild and lifetime-stat information reported by the client. |
+| `/lagom sync` | Send your profile and request saved profession catalogs from online addon users in the guild. |
+| `/lagom debug` | Show the guild, lifetime-stat, and local profession-sync counters. |
 | `/lagom help` | Show a short command list in chat. |
 | `/lagomledger` | Alias for Lagom Ledger when the reference addon also claims `/lagom`. |
 
@@ -108,40 +111,8 @@ Every entrant must have at least the wager available in their bags before they c
 
 ## Important limitations
 
-WoW Forever does not expose every ordinary combat-log event to addons. Lagom Ledger reads the client-reported honorable-kill total, but it cannot identify the player killed, the killer, or the zone. Automatic bounty completion is therefore a **best-effort** match: a tracked enemy bounty target must be observed dead shortly after a new honorable-kill credit. Use the manual bounty actions when that evidence is unavailable.
+WoW Forever does not expose every ordinary combat-log event to addons. Lagom Ledger reads the client-reported honorable-kill total, but it cannot reliably identify the player killed, the killer, or the zone of a kill. Bounty sightings are separate: they use visible enemy nameplates and report the current zone and subzone when a listed target is seen. Automatic bounty completion is a **best-effort** match: a tracked enemy bounty target must be observed dead shortly after a new honorable-kill credit. Use the manual bounty actions when that evidence is unavailable.
 
-Following the reference addon behavior, `PLAYER_DEAD` increases the local character's death total and synchronizes the updated profile to guild members with the addon. This includes deaths outside PvP. The addon records the current life from the last observed death or resurrection and preserves the longest completed life. An honorable-kill streak increases from the client's lifetime honorable-kill counter and resets only after a best-effort observed PvP death: the local client must have recently entered combat while targeting a hostile player. On such a death, addon users receive an internal PvP-death notice and the last observed hostile target is counted as that member's nemesis; the Deaths page also aggregates those records into a guild nemesis. Honorable-kill credits similarly record at most one observed dead hostile target as the killer's Nemesis on the Kills page. WoW Forever does not expose a reliable victim/killer API, so named killers and victims are hints rather than verified attribution, and unobserved PvP deaths cannot safely reset a streak. Use `/lagom death` only for additions or corrections, so that a death is not recorded twice.
+Following the reference addon behavior, `PLAYER_DEAD` increases the local character's death total and synchronizes the updated profile to guild members with the addon. This includes deaths outside PvP. The addon records the current life from the last observed death or resurrection and preserves the longest completed life. An honorable-kill streak increases from the client's lifetime honorable-kill counter and resets only after a best-effort observed PvP death: the local client must have recently entered combat while targeting a hostile player. On such a death, addon users receive an internal PvP-death notice. A target inferred only from recent combat may appear as uncertain in that notice, but only confirmed Death Recap attribution contributes to the nemesis leaderboard. Honorable-kill credits may record an observed hostile target on the Kills page. WoW Forever does not expose a reliable victim/killer API, so named killers and victims are not always verified attribution, and unobserved PvP deaths cannot safely reset a streak. Use `/lagom death` only for additions or corrections, so that a death is not recorded twice.
 
 Guild addon messages are not a secure anti-cheat system. Treat the leaderboard as a shared guild honor board, not as authoritative statistics from the game server.
-
-## Development
-
-- Target client: *World of Warcraft Forever*
-- Addon interface: `16001`
-- Module map (loaded in TOC order): `Core.lua` owns bootstrap, guild data, shared messaging and event routing; `Balance.lua` owns reward amounts, reset windows and balance transactions; `ReferenceCompatibility.lua` translates Lagom messages; `Casino.lua` and `CasinoGames.lua` own casino debts and game flow; `Ellesmere.lua` integrates settings and minimap providers; `UI.lua` builds the interface.
-
-### Secret protection
-
-Install Gitleaks and enable the repository's pre-commit hook before committing:
-
-```powershell
-winget install -e --id Gitleaks.Gitleaks
-git config core.hooksPath .githooks
-```
-
-The hook blocks commits containing detected secrets and fails closed if Gitleaks is missing. GitHub Actions also scans pull requests and pushes. For public repositories, GitHub push protection for users blocks supported secret patterns by default; it can be managed in your GitHub account's Secret Protection settings.
-
-After making changes, run `/reload`, open `/lagom`, and test synchronization with at least one other guild member who also has the addon installed.
-
-## Releases
-
-GitHub Actions validates every pull request and push to `main`. After a pull request has been merged into `main`, its same-repository source branch is automatically deleted. Pushing an annotated tag named `v<version>` runs [BigWigsMods/packager](https://github.com/BigWigsMods/packager), verifies that the tag matches `## Version` in `LagomLedger/LagomLedger.toc`, packages the Forever addon, and creates a GitHub Release with the ZIP file. The package contains only the installable `LagomLedger` folder.
-
-For example, after setting `## Version` in the TOC to `1.7.0` (the addon reads its release version from this metadata):
-
-```text
-git tag -a v1.7.0 -m "Lagom Ledger 1.7.0"
-git push origin v1.7.0
-```
-
-No personal access token is required for GitHub Releases; the workflow uses its scoped `GITHUB_TOKEN`. See [the release-pipeline note](docs/plans/release-pipeline.md) for the full behavior.

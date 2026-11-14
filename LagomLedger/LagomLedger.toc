@@ -1,8 +1,8 @@
 ## Interface: 16001
 ## Title: Lagom Ledger
-## Notes: Guild PvP leaderboard and bounty board.
+## Notes: Guild PvP, professions, bounties and casino.
 ## Author: Lagom Ledger
-## Version: 1.7.2
+## Version: 1.7.3
 ## SavedVariables: LagomLedgerDB
 ## OptionalDeps: Blizzard_Professions, EllesmereUI, EllesmereUIMinimap, atrocityEssentials
 ## IconTexture: Interface\\Icons\\Achievement_PVP_H_01

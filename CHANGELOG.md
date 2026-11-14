@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.7.3 - Release candidate
+
+- Added required recipe materials, quantities and alternatives to Professions, with guild sharing alongside saved recipe catalogs.
+- Prevented casino settlement replay double-counting, expired inactive game lobbies, and validated guild message senders; updated clients preserve existing totals but ignore ambiguous unversioned casino stats/settlements from older versions.
+- Added collision-resistant bounty/game IDs, coalesced guild sync replies, and a compact profile fallback for oversized messages.
+- Fixed profession synchronization identity matching for names with realm suffixes and guild members who share a first name.
+- Prevented stale reference-addon bounty updates from restoring a completion timestamp on open or cancelled bounties.
+- Avoided duplicate casino UI refreshes and guarded the main board while guild data is unavailable.
+- Updated the user guide, addon metadata, integration notes and release workflow documentation to match current behavior.
+
 ## 1.7.2 - Release candidate
 
 - Added a dedicated internal guild-addon version check after login, with delayed replies to avoid guild-message spam.

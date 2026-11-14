@@ -17,7 +17,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Check out source
-        uses: actions/checkout@v4
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # actions/checkout v4.2.2
+      - name: Install Lua 5.1
+        run: sudo apt-get update && sudo apt-get install --yes lua5.1
+      - name: Check Lua syntax
+        shell: bash
+        run: find LagomLedger -name '*.lua' -print0 | xargs -0 -n1 luac5.1 -p
       - name: Run compatibility contract
         shell: pwsh
         run: ./tests/ReferenceCompatibility.Contract.Tests.ps1
@@ -33,7 +38,7 @@ jobs:
       GH_API_TOKEN: ${{ github.token }}
     steps:
       - name: Check out the tagged source
-        uses: actions/checkout@v4
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # actions/checkout v4.2.2
         with:
           fetch-depth: 0
       - name: Check tag matches the addon version
@@ -42,6 +47,6 @@ jobs:
           toc_version=$(awk -F ': ' '/^## Version:/ { print $2; exit }' LagomLedger/LagomLedger.toc)
           test "v${toc_version}" = "${GITHUB_REF_NAME}"
       - name: Package and create GitHub Release
-        uses: BigWigsMods/packager@v2
+        uses: BigWigsMods/packager@e50a250f8705041e40f2fa1ddcb280a686d65aa0 # BigWigsMods/packager v2.6.1
         with:
           args: -g forever

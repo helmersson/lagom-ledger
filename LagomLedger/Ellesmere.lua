@@ -74,13 +74,13 @@ function LL:RegisterEllesmerePlugin()
             {
                 key = "Board",
                 title = "Guild Board",
-                description = "Open the Lagom Ledger guild PvP leaderboard and bounty board.",
+                description = "Open the Lagom Ledger guild PvP, professions, bounties and casino board.",
                 pages = { "Overview" },
                 buildPage = function(_, parent, y)
                     if EUI.IsSearchPrebuild and EUI.IsSearchPrebuild() then return math.abs(y) + 96 end
                     local _, height = EUI.Widgets:SectionHeader(parent, "LAGOM LEDGER", y)
                     y = y - height
-                    _, height = AddText(parent, "Guild-only PvP scores, professions and Alliance bounties. The board only shares data with members of your current guild who have this addon installed.", y)
+                    _, height = AddText(parent, "Guild-only PvP scores, learned recipes, Alliance bounties and casino records. Data is shared only with current guild members who have Lagom Ledger installed.", y)
                     y = y - height
                     _, height = AddButton(parent, "Open guild board", y, function() LL:ToggleUI() end)
                     return math.abs(y) + height

@@ -5,6 +5,13 @@ move-folders:
 
 ignore:
   - .github
+  - .githooks
   - docs
   - tests
   - README.md
+  - AGENTS.md
+  - GLOSSARY.md
+  - .gitignore
+  - .pkgmeta
+  - graphify-out
+  - .codex

@@ -90,12 +90,6 @@ local function coloredName(name, class)
     return color and color.colorStr and "|c" .. color.colorStr .. name .. "|r" or name
 end
 
-local function formatProfessions(value)
-    local output = {}
-    for name, rank in (value or ""):gmatch("([^,:]+):(%d+)") do table.insert(output, name .. " |cffaaaaaa" .. rank .. "|r") end
-    return #output > 0 and table.concat(output, ", ") or "|cff666666-|r"
-end
-
 local function ago(timestamp)
     local elapsed = (GetServerTime and GetServerTime() or time()) - (timestamp or 0)
     if elapsed < 3600 then return math.max(1, math.floor(elapsed / 60)) .. "m" end
@@ -262,7 +256,7 @@ function LL:BuildUI()
     rewardBox:SetAutoFocus(false)
     rewardBox:SetMaxLetters(12)
     local function postBounty()
-        if LL:PostBounty(nameBox:GetText(), rewardBox:GetText()) then nameBox:SetText(""); rewardBox:SetText("") end
+        if LL:AddBounty(nameBox:GetText(), rewardBox:GetText()) then nameBox:SetText(""); rewardBox:SetText("") end
         nameBox:ClearFocus(); rewardBox:ClearFocus()
     end
     nameBox:SetScript("OnEnterPressed", postBounty)
@@ -310,6 +304,270 @@ function LL:BuildUI()
     local completeTarget = makeButton(recordsContent, "Complete target", 124, 22)
     completeTarget:SetPoint("BOTTOMRIGHT", -16, 11)
     completeTarget:SetScript("OnClick", function() LL:CompleteSelectedBounties() end)
+
+    local professionCatalogPanel = CreateFrame("Frame", nil, recordsContent)
+    professionCatalogPanel:SetAllPoints()
+    professionCatalogPanel:Hide()
+    local professionNames = { "Alchemy", "Blacksmithing", "Cooking", "Enchanting", "Engineering", "Leatherworking", "Tailoring" }
+    local excludedProfessions = { ["first aid"] = true, fishing = true, mining = true, skinning = true, herbalism = true }
+    local professionListPane, recipeListPane, recipeDetailPane = makePanel(professionCatalogPanel), makePanel(professionCatalogPanel), makePanel(professionCatalogPanel)
+    professionListPane:SetPoint("TOPLEFT", 10, -10); professionListPane:SetPoint("BOTTOMLEFT", 10, 10)
+    recipeListPane:SetPoint("TOP", professionListPane, "TOP"); recipeListPane:SetPoint("BOTTOM", professionListPane, "BOTTOM")
+    recipeDetailPane:SetPoint("TOP", professionListPane, "TOP"); recipeDetailPane:SetPoint("BOTTOM", professionListPane, "BOTTOM"); recipeDetailPane:SetPoint("RIGHT", -10, 0)
+    local professionTitle = text(professionListPane, 11, unpack(JOURNAL.title))
+    professionTitle:SetPoint("TOPLEFT", 9, -10); professionTitle:SetText("PROFESSIONS")
+    local recipeTitle = text(recipeListPane, 11, unpack(JOURNAL.title))
+    recipeTitle:SetPoint("TOPLEFT", 10, -10); recipeTitle:SetText("CRAFTS")
+    local recipeSearch = CreateFrame("EditBox", nil, recipeListPane, "InputBoxTemplate")
+    recipeSearch:SetPoint("TOPLEFT", 8, -31); recipeSearch:SetPoint("TOPRIGHT", -8, -31); recipeSearch:SetHeight(24)
+    recipeSearch:SetAutoFocus(false); recipeSearch:SetMaxLetters(80); recipeSearch:SetTextInsets(6, 6, 0, 0)
+    recipeSearch:SetScript("OnEscapePressed", recipeSearch.ClearFocus)
+    recipeSearch:SetScript("OnTextChanged", function() if board:IsShown() and currentTab == 4 then refreshBoard() end end)
+    local recipeCount = text(recipeListPane, 10, unpack(JOURNAL.muted))
+    recipeCount:SetPoint("TOPLEFT", 10, -60)
+    local detailTitle = text(recipeDetailPane, 15, unpack(JOURNAL.title))
+    detailTitle:SetPoint("TOPLEFT", 12, -15); detailTitle:SetPoint("TOPRIGHT", -12, -15); detailTitle:SetJustifyV("TOP"); detailTitle:SetWordWrap(true)
+    local detailProfession = text(recipeDetailPane, 11, unpack(JOURNAL.muted))
+    detailProfession:SetPoint("TOPLEFT", detailTitle, "BOTTOMLEFT", 0, -10); detailProfession:SetPoint("TOPRIGHT", -12, 0); detailProfession:SetHeight(32); detailProfession:SetWordWrap(true)
+    local detailItem = text(recipeDetailPane, 12, unpack(JOURNAL.text))
+    detailItem:SetPoint("TOPLEFT", detailProfession, "BOTTOMLEFT", 0, -8); detailItem:SetPoint("TOPRIGHT", -12, 0); detailItem:SetHeight(42); detailItem:SetWordWrap(true)
+    local professionButtons, recipeButtons, detailRows = {}, {}, {}
+    local function refreshBoardWheel(frame, callback)
+        frame:EnableMouseWheel(true)
+        frame:SetScript("OnMouseWheel", callback)
+    end
+    local function scrollProfessionList(_, delta)
+        professionCatalogPanel.professionOffset = math.max(0, (professionCatalogPanel.professionOffset or 0) - delta * 2)
+        refreshBoard()
+    end
+    local function scrollRecipeList(_, delta)
+        professionCatalogPanel.resultOffset = math.max(0, (professionCatalogPanel.resultOffset or 0) - delta * 3)
+        refreshBoard()
+    end
+    local function scrollCrafterList(_, delta)
+        professionCatalogPanel.detailOffset = math.max(0, (professionCatalogPanel.detailOffset or 0) - delta * 3)
+        refreshBoard()
+    end
+    refreshBoardWheel(professionListPane, scrollProfessionList)
+    refreshBoardWheel(recipeListPane, scrollRecipeList)
+    refreshBoardWheel(recipeDetailPane, scrollCrafterList)
+    for index = 1, 24 do
+        local button = CreateFrame("Button", nil, professionListPane, "BackdropTemplate")
+        button:SetHeight(34); setBackdrop(button, JOURNAL.row, JOURNAL.border, 8, 1)
+        button.label = text(button, 11, unpack(JOURNAL.text)); button.label:SetPoint("LEFT", 6, 0); button.label:SetPoint("RIGHT", -5, 0)
+        button.label:SetWordWrap(true); button.label:SetJustifyV("MIDDLE")
+        button:SetScript("OnEnter", function(self) self:SetBackdropColor(unpack(JOURNAL.selected)) end)
+        button:SetScript("OnLeave", function(self) self:SetBackdropColor(self.selected and JOURNAL.selected[1] or JOURNAL.row[1], self.selected and JOURNAL.selected[2] or JOURNAL.row[2], self.selected and JOURNAL.selected[3] or JOURNAL.row[3], 0.96) end)
+        button:SetScript("OnMouseWheel", scrollProfessionList)
+        professionButtons[index] = button
+    end
+    for index = 1, 24 do
+        local button = CreateFrame("Button", nil, recipeListPane, "BackdropTemplate")
+        button:SetHeight(34); setBackdrop(button, JOURNAL.row, JOURNAL.border, 8, 1)
+        button.label = text(button, 11, unpack(JOURNAL.text)); button.label:SetPoint("TOPLEFT", 7, -4); button.label:SetPoint("TOPRIGHT", -7, -4); button.label:SetJustifyV("TOP"); button.label:SetWordWrap(true)
+        button:SetScript("OnEnter", function(self) if not self.selected then self:SetBackdropColor(unpack(JOURNAL.selected)) end end)
+        button:SetScript("OnLeave", function(self) self:SetBackdropColor(unpack(self.selected and JOURNAL.selected or JOURNAL.row)); self:SetBackdropBorderColor(unpack(self.selected and JOURNAL.title or JOURNAL.border)) end)
+        button:SetScript("OnMouseWheel", scrollRecipeList)
+        recipeButtons[index] = button
+    end
+    for index = 1, 32 do
+        local row = CreateFrame("Frame", nil, recipeDetailPane)
+        row.icon = row:CreateTexture(nil, "ARTWORK")
+        row.icon:SetSize(20, 20); row.icon:SetPoint("TOPLEFT", 0, -3)
+        row.label = text(row, 11, unpack(JOURNAL.text))
+        row.label:SetPoint("TOPLEFT", row.icon, "TOPRIGHT", 6, 0); row.label:SetPoint("RIGHT", -2, 0)
+        row.label:SetWordWrap(true); row.label:SetJustifyV("TOP")
+        detailRows[index] = row
+    end
+    local function refreshProfessionCatalog()
+        local availableWidth = math.max(520, professionCatalogPanel:GetWidth() - 30)
+        local leftWidth = math.floor(availableWidth * 0.25)
+        local middleWidth = math.floor(availableWidth * 0.38)
+        professionListPane:SetWidth(leftWidth)
+        recipeListPane:ClearAllPoints(); recipeListPane:SetPoint("TOPLEFT", professionListPane, "TOPRIGHT", 8, 0); recipeListPane:SetPoint("BOTTOMLEFT", professionListPane, "BOTTOMRIGHT", 8, 0); recipeListPane:SetWidth(middleWidth)
+        recipeDetailPane:ClearAllPoints(); recipeDetailPane:SetPoint("TOPLEFT", recipeListPane, "TOPRIGHT", 8, 0); recipeDetailPane:SetPoint("BOTTOMLEFT", recipeListPane, "BOTTOMRIGHT", 8, 0); recipeDetailPane:SetPoint("RIGHT", -10, 0)
+        local catalogMap, optionsByName, optionsByID = {}, {}, {}
+        for _, name in ipairs(professionNames) do
+            local key = strlower(name)
+            optionsByName[key] = { key = key, name = name, ids = {}, crafters = {} }
+        end
+        for identity, professions in pairs(LL.db.professionCatalogs or {}) do
+            for professionID, snapshot in pairs(professions) do
+                local id = tonumber(professionID)
+                local name = type(snapshot) == "table" and type(snapshot.name) == "string" and snapshot.name or ""
+                if id and type(snapshot) == "table" and type(snapshot.recipes) == "table" and #snapshot.recipes > 0 and not excludedProfessions[strlower(strtrim(name))] then
+                    name = name ~= "" and name or ("Profession " .. id)
+                    local key = strlower(strtrim(name))
+                    local option = optionsByName[key]
+                    if not option then option = { key = key, name = name, crafters = {} }; optionsByName[key] = option end
+                    optionsByID[id] = option
+                    local owner = snapshot.owner or identity
+                    local ownerKey = LL:FullPlayerIdentityKey(owner)
+                    option.crafters[ownerKey] = owner
+                    catalogMap[id] = catalogMap[id] or {}
+                    for _, recipe in ipairs(snapshot.recipes) do
+                        local recipeID, itemID = tonumber(recipe[1]), tonumber(recipe[2]) or 0
+                        if recipeID and recipeID > 0 then
+                            local entry = catalogMap[id][recipeID]
+                            if not entry then entry = { professionID = id, profession = name, recipeID = recipeID, itemID = 0, crafters = {} }; catalogMap[id][recipeID] = entry end
+                            if itemID > 0 then entry.itemID = itemID end
+                            if snapshot.reagents and snapshot.reagents[recipeID] ~= nil and entry.reagents == nil then entry.reagents = snapshot.reagents[recipeID] end
+                            entry.crafters[ownerKey] = owner
+                        end
+                    end
+                end
+            end
+        end
+        local options = {}
+        for _, option in pairs(optionsByName) do options[#options + 1] = option end
+        table.sort(options, function(a, b) return a.name < b.name end)
+        local allCrafters = {}
+        for _, option in ipairs(options) do for ownerKey, owner in pairs(option.crafters) do allCrafters[ownerKey] = owner end end
+        options = { { key = "*", name = "All professions", crafters = allCrafters }, unpack(options) }
+        local selectedKey = professionCatalogPanel.selectedProfessionKey or "*"
+        local selectedOption
+        for _, option in ipairs(options) do if option.key == selectedKey then selectedOption = option; break end end
+        if not selectedOption then selectedKey, selectedOption = "*", options[1]; professionCatalogPanel.selectedProfessionKey = "*" end
+        local recipeByKey, results, query = {}, {}, strlower(strtrim(recipeSearch:GetText() or ""))
+        local activeMaterialIDs = {}
+        LL.professionCatalogActive = board:IsShown() and professionCatalogPanel:IsShown()
+        LL.professionMaterialItemIDs = activeMaterialIDs
+        for id, entries in pairs(catalogMap) do
+            local category = optionsByID[id]
+            if category and (selectedKey == "*" or category.key == selectedKey) then
+                for _, entry in pairs(entries) do
+                    local recipeName = (C_Spell and C_Spell.GetSpellName and C_Spell.GetSpellName(entry.recipeID)) or (GetSpellInfo and GetSpellInfo(entry.recipeID)) or ("Recipe " .. entry.recipeID)
+                    local itemName = entry.itemID > 0 and C_Item and C_Item.GetItemNameByID and C_Item.GetItemNameByID(entry.itemID) or ""
+                    if query == "" or strlower(recipeName):find(query, 1, true) or strlower(itemName or ""):find(query, 1, true) then
+                        entry.recipe = recipeName; entry.item = itemName or ""
+                        entry.crafterCount = 0
+                        for _ in pairs(entry.crafters) do entry.crafterCount = entry.crafterCount + 1 end
+                        results[#results + 1] = entry
+                        recipeByKey[id .. ":" .. entry.recipeID] = entry
+                    end
+                end
+            end
+        end
+        table.sort(results, function(a, b) if a.recipe == b.recipe then return a.profession < b.profession end return a.recipe < b.recipe end)
+        recipeCount:SetText(#results .. (#results == 1 and " craft" or " crafts"))
+        local paneHeight = recipeListPane:GetHeight()
+        local professionVisible = math.max(1, math.floor((professionListPane:GetHeight() - 38) / 36))
+        local professionOffset = math.max(0, math.min(professionCatalogPanel.professionOffset or 0, #options - professionVisible))
+        professionCatalogPanel.professionOffset = professionOffset
+        for index, button in ipairs(professionButtons) do
+            local option = options[index + professionOffset]
+            button:ClearAllPoints(); button:SetPoint("TOPLEFT", 5, -34 - (index - 1) * 36); button:SetPoint("TOPRIGHT", -5, -34 - (index - 1) * 36)
+            button:SetShown(option ~= nil and index <= professionVisible)
+            if option then
+                local count = 0
+                for _ in pairs(option.crafters) do count = count + 1 end
+                button.optionKey = option.key; button.selected = option.key == selectedKey
+                button.label:SetText(option.name .. (count > 0 and ("\n|cffaaa088" .. count .. (count == 1 and " crafter|r" or " crafters|r")) or ""))
+                button:SetBackdropColor(unpack(button.selected and JOURNAL.selected or JOURNAL.row))
+                button:SetBackdropBorderColor(unpack(button.selected and JOURNAL.title or JOURNAL.border))
+                button:SetScript("OnClick", function(self)
+                    professionCatalogPanel.selectedProfessionKey = self.optionKey
+                    professionCatalogPanel.selectedRecipeKey = nil
+                    professionCatalogPanel.resultOffset, professionCatalogPanel.detailOffset = 0, 0
+                    refreshBoard()
+                end)
+            end
+        end
+        local resultVisible = math.max(1, math.floor((paneHeight - 100) / 38))
+        local resultOffset = math.max(0, math.min(professionCatalogPanel.resultOffset or 0, #results - resultVisible))
+        professionCatalogPanel.resultOffset = resultOffset
+        local chosenKey = professionCatalogPanel.selectedRecipeKey
+        local chosen = chosenKey and recipeByKey[chosenKey]
+        if not chosen and chosenKey then professionCatalogPanel.selectedRecipeKey = nil end
+        for index, button in ipairs(recipeButtons) do
+            local entry = results[index + resultOffset]
+            button:ClearAllPoints(); button:SetPoint("TOPLEFT", 7, -94 - (index - 1) * 38); button:SetPoint("TOPRIGHT", -7, -94 - (index - 1) * 38)
+            button:SetShown(entry ~= nil and index <= resultVisible)
+            if entry then
+                local key = entry.professionID .. ":" .. entry.recipeID
+                button.entryKey, button.selected = key, key == chosenKey
+                local name = entry.item ~= "" and entry.item or entry.recipe
+                button.label:SetText(name .. "\n|cffaaa088" .. entry.profession .. "  ·  " .. entry.crafterCount .. (entry.crafterCount == 1 and " crafter|r" or " crafters|r"))
+                button:SetBackdropColor(unpack(button.selected and JOURNAL.selected or JOURNAL.row))
+                button:SetBackdropBorderColor(unpack(button.selected and JOURNAL.title or JOURNAL.border))
+                button:SetScript("OnClick", function(self) professionCatalogPanel.selectedRecipeKey = self.entryKey; professionCatalogPanel.detailOffset = 0; refreshBoard() end)
+            end
+        end
+        if chosen then
+            if chosen.itemID > 0 then
+                activeMaterialIDs[chosen.itemID] = true
+                local outputName = C_Item and C_Item.GetItemNameByID and C_Item.GetItemNameByID(chosen.itemID)
+                if not outputName and C_Item and C_Item.RequestLoadItemDataByID then pcall(C_Item.RequestLoadItemDataByID, chosen.itemID) end
+            end
+            detailTitle:SetText(chosen.item ~= "" and chosen.item or chosen.recipe)
+            detailProfession:SetText(chosen.profession .. " — " .. chosen.recipe)
+            detailItem:SetText(chosen.item ~= "" and ("Creates: " .. chosen.item) or (chosen.itemID > 0 and ("Creates item #" .. chosen.itemID .. " (loading name)") or "No single item output"))
+        else
+            detailTitle:SetText(selectedKey == "*" and "Select a craft" or selectedOption.name)
+            detailProfession:SetText(selectedKey == "*" and "Choose a recipe to see who can make it." or (#results == 0 and "No shared recipes match this profession." or "Choose a craft to see who can make it."))
+            detailItem:SetText("")
+        end
+        local names = {}
+        if chosen then for identity, owner in pairs(chosen.crafters) do names[#names + 1] = { identity = identity, name = owner, short = LL:ShortName(owner) } end end
+        table.sort(names, function(a, b) return a.name < b.name end)
+        local shortCounts = {}
+        for _, member in ipairs(names) do local key = strlower(member.short); shortCounts[key] = (shortCounts[key] or 0) + 1 end
+        local detailEntries = {}
+        local function addHeading(label) detailEntries[#detailEntries + 1] = { heading = true, text = label } end
+        if chosen then
+            addHeading("REQUIRED MATERIALS")
+            if chosen.reagents == nil then
+                detailEntries[#detailEntries + 1] = { text = "Materials unavailable. The crafter needs to reopen this profession to share them." }
+            elseif #chosen.reagents == 0 then
+                detailEntries[#detailEntries + 1] = { text = "No required materials." }
+            else
+                for _, slot in ipairs(chosen.reagents) do
+                    local labels, icon = {}, nil
+                    for _, reagent in ipairs(slot.choices or {}) do
+                        local kind, id = reagent[1], tonumber(reagent[2])
+                        if kind == "i" and id then
+                            activeMaterialIDs[id] = true
+                            local name = C_Item and C_Item.GetItemNameByID and C_Item.GetItemNameByID(id)
+                            if name then labels[#labels + 1] = name else
+                                labels[#labels + 1] = "Item #" .. id .. " (loading)"
+                                if C_Item and C_Item.RequestLoadItemDataByID then pcall(C_Item.RequestLoadItemDataByID, id) end
+                            end
+                            icon = icon or (C_Item and C_Item.GetItemIconByID and C_Item.GetItemIconByID(id))
+                        elseif kind == "c" and id then
+                            labels[#labels + 1] = "Currency #" .. id
+                            icon = icon or "Interface\\Icons\\INV_Misc_Coin_01"
+                        end
+                    end
+                    if #labels > 0 then detailEntries[#detailEntries + 1] = { text = slot.quantity .. " × " .. table.concat(labels, " or "), icon = icon } end
+                end
+            end
+            addHeading("WHO CAN CRAFT THIS  (" .. chosen.crafterCount .. ")")
+        else
+            addHeading("WHO CAN CRAFT THIS")
+        end
+        for _, member in ipairs(names) do
+            detailEntries[#detailEntries + 1] = { text = shortCounts[strlower(member.short)] > 1 and member.name or member.short }
+        end
+        local detailVisible = math.max(1, math.floor((recipeDetailPane:GetHeight() - 170) / 40))
+        local detailOffset = math.max(0, math.min(professionCatalogPanel.detailOffset or 0, #detailEntries - detailVisible))
+        professionCatalogPanel.detailOffset = detailOffset
+        for index, row in ipairs(detailRows) do
+            local entry = detailEntries[index + detailOffset]
+            row:ClearAllPoints(); row:SetPoint("TOPLEFT", detailItem, "BOTTOMLEFT", 0, -12 - (index - 1) * 40); row:SetPoint("RIGHT", -10, 0); row:SetHeight(38)
+            row.icon:SetTexture(entry and entry.icon or nil)
+            row.icon:SetShown(entry ~= nil and entry.icon ~= nil and not entry.heading)
+            row.label:SetText(entry and entry.text or "")
+            if entry and entry.heading then row.label:SetTextColor(unpack(JOURNAL.title)); row.label:SetHeight(22)
+            else row.label:SetTextColor(unpack(JOURNAL.text)); row.label:SetHeight(38) end
+            row:SetShown(entry ~= nil and index <= detailVisible)
+        end
+        if #results == 0 then
+            LL.professionCatalogActive = false
+            LL.professionMaterialItemIDs = {}
+            detailTitle:SetText(selectedKey == "*" and "No recipes shared yet" or selectedOption.name)
+            detailProfession:SetText(selectedKey == "*" and "Open a crafting profession to share learned recipes." or "No shared recipes found for this profession.")
+        end
+    end
 
     local topThree = CreateFrame("Frame", nil, recordsContent)
     topThree:SetSize(474, 102)
@@ -414,7 +672,6 @@ function LL:BuildUI()
         local scale = rowWidth / CONTENT_W
         for column = 1, columns do
             local definition = definitions[column]
-            local wrapText = tabs[currentTab] == "Professions" and (column == 3 or column == 4)
             columnHeaders[column]:SetShown(definition ~= nil)
             if definition then
                 columnHeaders[column]:ClearAllPoints()
@@ -424,14 +681,9 @@ function LL:BuildUI()
             for rowIndex = 1, ROWS do
                 local cell = rows[rowIndex].cells[column]
                 cell:SetShown(definition ~= nil)
-                cell:SetWordWrap(wrapText)
                 if definition then
                     cell:ClearAllPoints()
-                    if wrapText then
-                        cell:SetPoint("TOPLEFT", math.floor(definition[2] * scale + 0.5), -4)
-                    else
-                        cell:SetPoint("LEFT", math.floor(definition[2] * scale + 0.5), 0)
-                    end
+                    cell:SetPoint("LEFT", math.floor(definition[2] * scale + 0.5), 0)
                     cell:SetWidth(math.floor(definition[3] * scale + 0.5))
                 end
                 rows[rowIndex]:SetWidth(rowWidth)
@@ -487,19 +739,6 @@ function LL:BuildUI()
                 data[index] = { cells = { bounty.active and ("|cffff5555" .. bounty.target .. "|r") or ("|cff888888" .. bounty.target .. "|r"), bounty.postedBy, LL:FormatMoney(bounty.rewardCopper), status }, action = action }
             end
             footer:SetText("Enter rewards as gold.silver (for example 12.34). Claimed rewards become a debt in Balance sheet.")
-        else
-            setRowHeight(50)
-            topThree:Hide()
-            nemesisRow:Hide()
-            setTableHeaderY(-55)
-            local members = LL:Members()
-            table.sort(members, function(left, right) return left.name < right.name end)
-            layout({ { "Name", 0, 120 }, { "Level", 126, 40 }, { "Professions", 172, 190 }, { "Secondary", 368, 122 } })
-            for index, member in ipairs(members) do
-                local primary = member.primaryProfessions ~= "" and formatProfessions(member.primaryProfessions) or table.concat(member.professions, ", ")
-                data[index] = { cells = { coloredName(member.name, member.class), member.level > 0 and member.level or "", primary ~= "" and primary or "|cff666666-|r", formatProfessions(member.secondaryProfessions) } }
-            end
-            footer:SetText("Each character's professions and skill, as last reported by their addon.")
         end
         return data
     end
@@ -523,6 +762,23 @@ function LL:BuildUI()
         end
         entry:SetShown(tabs[currentTab] == "Bounties")
         completeTarget:SetShown(tabs[currentTab] == "Bounties")
+        local showProfessionCatalog = tabs[currentTab] == "Professions"
+        professionCatalogPanel:SetShown(showProfessionCatalog)
+        if not showProfessionCatalog then
+            LL.professionCatalogActive = false
+            LL.professionMaterialItemIDs = {}
+        end
+        if showProfessionCatalog then
+            footer:SetText("")
+            footer:Hide()
+            topThree:Hide(); nemesisRow:Hide(); entry:Hide(); completeTarget:Hide(); line:Hide()
+            for _, header in ipairs(columnHeaders) do header:Hide() end
+            for _, row in ipairs(rows) do row:Hide() end
+            refreshProfessionCatalog()
+            return
+        end
+        footer:Show()
+        line:Show()
         local data = buildRows()
         local visibleRows = math.max(1, math.min(ROWS, math.floor((recordsContent:GetHeight() + headerY - 54) / rowHeight)))
         local maxOffset = math.max(0, #data - visibleRows)
@@ -531,7 +787,9 @@ function LL:BuildUI()
             local row, item = rows[index], data[index + offset]
             row:SetShown(index <= visibleRows and item ~= nil)
             if item then
-                for column = 1, columns do row.cells[column]:SetText(item.cells[column] ~= nil and tostring(item.cells[column]) or "") end
+                for column = 1, columns do
+                    row.cells[column]:SetText(item.cells[column] ~= nil and tostring(item.cells[column]) or "")
+                end
                 row.action:SetShown(item.action ~= nil)
                 if item.action then
                     row.action:SetText(item.action.remove and "Remove" or "Complete")
@@ -542,7 +800,9 @@ function LL:BuildUI()
         end
         if #data == 0 then
             rows[1]:Show(); rows[1].action:Hide()
-            for column = 1, columns do rows[1].cells[column]:SetText("") end
+            for column = 1, columns do
+                rows[1].cells[column]:SetText("")
+            end
             rows[1].cells[1]:SetWidth(math.max(CONTENT_W, recordsContent:GetWidth() - 32) - 40)
             rows[1].cells[1]:SetText(tabs[currentTab] == "Bounties" and "|cff888888No bounties yet. Post one above.|r" or "|cff888888Nothing to show yet.|r")
         end
@@ -553,7 +813,15 @@ function LL:BuildUI()
         layoutBoard()
         refreshBoard()
     end)
-    board:SetScript("OnMouseWheel", function(_, delta) offset = math.max(0, offset - delta * 3); refreshBoard() end)
+    board:SetScript("OnHide", function()
+        LL.professionCatalogActive = false
+        LL.professionMaterialItemIDs = {}
+    end)
+    board:SetScript("OnMouseWheel", function(_, delta)
+        if currentTab == 4 then professionCatalogPanel.resultOffset = math.max(0, (professionCatalogPanel.resultOffset or 0) - delta * 3)
+        else offset = math.max(0, offset - delta * 3) end
+        refreshBoard()
+    end)
     board:SetScript("OnSizeChanged", function()
         constrainBoard()
         layoutBoard()
@@ -576,13 +844,15 @@ function LL:SetBoardPage(page)
     currentTab, offset = tabs[strlower(page or "")] or 1, 0
     if currentTab == 5 then self:BuildCasinoUI() end
     if currentTab == 6 then self:BuildBalanceUI() end
-    self.selectedBoardPage = page
     self:RefreshUI()
 end
 
 function LL:RefreshUI()
+    if not self.db then
+        if board and board:IsShown() then board:Hide() end
+        return
+    end
     if refreshBoard then refreshBoard() end
-    if self.RefreshCasinoUI then self:RefreshCasinoUI() end
 end
 
 function LL:ToggleUI(tab)

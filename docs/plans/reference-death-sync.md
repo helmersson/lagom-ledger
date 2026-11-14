@@ -1,4 +1,6 @@
-# Reference death synchronization task note
+# Historical record: reference death synchronization
+
+> This note records the 2026-11-11 baseline, when only death counts were synchronized. It is superseded for current killer attribution and internal PvP death notices by [pvp-death-attribution.md](../agents/pvp-death-attribution.md). Keep it as the original compatibility decision; do not treat its implementation status as a description of current behavior.
 
 - Project: `Lagom Ledger`
 - Updated: 2026-11-11
