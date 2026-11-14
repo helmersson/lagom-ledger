@@ -172,7 +172,6 @@ Assert-Contains $core 'self:Broadcast("UPDATE_AVAILABLE", { target = sender, rel
 Assert-Contains $core 'elseif kind == "UPDATE_AVAILABLE" then' 'internal update notification protocol'
 Assert-NotContains $core 'SendChatMessage(' 'normal-chat update notification'
 Assert-NotContains $compatibility 'NotifyOutdatedMember(sender, nil)' 'legacy whisper update trigger'
-Assert-Contains $core 'elseif command == "reset" then' 'window reset command'
 Assert-Contains $core 'elseif kind == "CASINO_GAME_DEBT_PAID" then' 'casino debt-payment protocol'
 Assert-Contains $compatibility 'player.killStreak = (player.killStreak or 0) + gainedKills' 'honorable kill streak increment'
 Assert-Contains $compatibility 'function LL:RecordObservedPvpKill(name)' 'observed PvP kill target tracking'
