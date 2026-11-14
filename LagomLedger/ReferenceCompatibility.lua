@@ -149,8 +149,8 @@ function LL:PumpLegacyMessages()
     end
 end
 
-function LL:SendLegacyStats()
-    local player = self:CollectReferenceProfile()
+function LL:SendLegacyStats(player)
+    player = player or self:CollectReferenceProfile()
     if not player then return end
     self:QueueLegacyMessage("S", ("S;%s;%d;%d;%d;%s;%s"):format(
         clean(player.class, 30), tonumber(player.level) or 0, tonumber(player.kills) or 0,
@@ -181,16 +181,16 @@ end
 
 local originalRefreshLocalProfile = LL.RefreshLocalProfile
 function LL:RefreshLocalProfile()
-    self:CollectReferenceProfile()
+    local player = self:CollectReferenceProfile()
     originalRefreshLocalProfile(self)
-    self:SendLegacyStats()
+    self:SendLegacyStats(player)
 end
 
 local originalRecordDeath = LL.RecordDeath
 function LL:RecordDeath(pvpCombat)
     originalRecordDeath(self, pvpCombat)
-    self:CollectReferenceProfile()
-    self:SendLegacyStats()
+    local player = self:CollectReferenceProfile()
+    self:SendLegacyStats(player)
 end
 
 local originalAddBounty = LL.AddBounty
@@ -252,10 +252,6 @@ function LL:Bounties()
     return bounties
 end
 
-function LL:PostBounty(target, reward)
-    return self:AddBounty(target, reward)
-end
-
 function LL:MergeLegacyBounty(data)
     local incomingUpdated = math.min(tonumber(data.updatedAt) or now(), now() + 300)
     for _, bounty in ipairs(self.db.bounties) do
@@ -265,7 +261,7 @@ function LL:MergeLegacyBounty(data)
             bounty.note, bounty.rewardCopper, bounty.updatedAt, bounty.canceled = data.note, self:ParseRewardCopper(data.note) or 0, incomingUpdated, data.status == "X"
             bounty.active = data.status == "O"
             bounty.completedBy = data.status == "C" and data.completedBy or nil
-            bounty.completedAt = bounty.active and nil or incomingUpdated
+            bounty.completedAt = data.status == "C" and incomingUpdated or nil
             if data.status == "C" then self:CreateBountySettlement(bounty) end
             self:RefreshUI()
             return
@@ -275,7 +271,7 @@ function LL:MergeLegacyBounty(data)
         id = data.id, target = data.target, postedBy = data.postedBy, createdAt = data.createdAt,
         note = data.note, rewardCopper = self:ParseRewardCopper(data.note) or 0, updatedAt = incomingUpdated, active = data.status == "O",
         canceled = data.status == "X", completedBy = data.status == "C" and data.completedBy or nil,
-        completedAt = data.status == "O" and nil or incomingUpdated,
+        completedAt = data.status == "C" and incomingUpdated or nil,
     }
     table.insert(self.db.bounties, bounty)
     if data.status == "C" then self:CreateBountySettlement(bounty) end
@@ -459,6 +455,7 @@ function LL:DebugReference()
     self:Print("Addon active: " .. tostring(self:IsLagomMember()))
     self:Print("Honorable kills: " .. tostring(lifetimeKills()))
     self:Print("Total deaths: " .. tostring(lifetimeDeaths()))
+    self:PrintProfessionSyncStatus()
 end
 
 local frame = CreateFrame("Frame")
@@ -500,6 +497,7 @@ end
 
 function handlers.GUILD_ROSTER_UPDATE()
     LL:PruneReferenceMembers()
+    LL:MergeProfessionCatalogAliases()
 end
 
 function handlers.CHAT_MSG_ADDON(prefix, message, channel, sender)
@@ -562,7 +560,7 @@ SlashCmdList.LAGOMLEDGER = function(input)
         LL:ToggleUI("Professions")
     elseif command == "bounty" then
         local name, reward = argument:match("^(%S+)%s*(.-)$")
-        if name then LL:PostBounty(name, reward) else LL:Print("Type /lagom bounty Name reward (for example 12.34)") end
+        if name then LL:AddBounty(name, reward) else LL:Print("Type /lagom bounty Name reward (for example 12.34)") end
     elseif command == "debug" then
         LL:DebugReference()
     elseif command == "death" then
@@ -580,6 +578,7 @@ SlashCmdList.LAGOMLEDGER = function(input)
     elseif command == "sync" then
         LL:RefreshLocalProfile()
         LL:SendLegacySnapshot()
+        LL:RequestProfessionCatalogSync()
     elseif command == "help" then
         LL:Print("/lagom kills | deaths | bounties | professions | casino | balance | reset | settings | sync | debug")
     else

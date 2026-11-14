@@ -68,7 +68,7 @@
 | DEC-RI-006 / 2026-11-11 | User request | Move casino controls into the main Ledger window as the Casino navigation tab. | REQ-RI-002, REQ-RI-007 | `/lagom casino` and minimap right-click select the tab rather than opening a separate window. |
 | DEC-RI-007 / 2026-11-11 | User request | Make the shared Ledger window resizable and resize the board table and casino result panels with it. | REQ-RI-007 | The lower-right mouse grip controls sizing; fixed controls retain a usable minimum size. |
 | DEC-RI-008 / 2026-11-11 | User request | Derive streaks from the honorable-kill total, and reset only after locally observed PvP combat followed by death. | REQ-RI-009 | No combat-log or fabricated killer data is used; deaths without a recent hostile-player target do not reset the streak. |
-| DEC-RI-009 / 2026-11-11 | User report | Bound the window to current screen dimensions and use a dedicated internal version prefix plus profile synchronization to make update notices visible locally at login. | REQ-RI-010 | v1.7.2+ clients exchange validated versions through `LagomLedgerVer`; compatible older Ledger versions retain the profile-sync fallback. No whispers are sent. |
+| DEC-RI-009 / 2026-11-11 | User report | Bound the window to current screen dimensions and use a dedicated internal version prefix plus profile synchronization to make update notices visible locally at login. | REQ-RI-010 | v1.7.2+ clients exchange validated versions through `LagomLedgerVer`; compatible older Ledger versions retain the profile-sync fallback. Update notices use no ordinary chat whispers. Profession catalog recovery has a separate private addon-whisper path. |
 
 ## Completion criteria
 

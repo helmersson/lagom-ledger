@@ -92,7 +92,7 @@ function LL:PrepareCasinoDebtMail()
 end
 
 function LL:ApplyCasinoDebtPayment(payment)
-    if not payment.id or not payment.winner or not payment.loser or not payment.amount or not payment.paidBy or not self:NamesMatch(payment.loser, payment.paidBy) then return end
+    if not payment.id or not payment.winner or not payment.loser or not payment.amount or not payment.paidBy or not self:GuildIdentityMatches(payment.loser, payment.paidBy) then return end
     local settlements = self.db.casinoSettlements[payment.id]
     local settlement = settlements and settlements[self:CasinoSettlementKey(payment)]
     if not settlement or settlement.paidAt then return end
@@ -132,7 +132,8 @@ function LL:BroadcastCasinoStat(name)
 end
 
 function LL:ReceiveCasinoStat(payload)
-    if not payload.name then return end
+    -- Legacy cumulative snapshots may already include replayed settlements.
+    if not payload.name or payload.accountingVersion ~= 2 then return end
     local stats = self:GetCasinoStats(payload.name)
     stats.wonGold = math.max(stats.wonGold, payload.wonGold or 0)
     stats.lostGold = math.max(stats.lostGold, payload.lostGold or 0)
@@ -140,12 +141,30 @@ function LL:ReceiveCasinoStat(payload)
     self:RefreshUI()
 end
 
+function LL:ReceiveCasinoStatBaseline(payload)
+    if not payload.name or payload.accountingVersion ~= 2 then return end
+    local baseline = self.db.casinoStatBaseline[payload.name] or { wonGold = 0, lostGold = 0, games = 0 }
+    baseline.wonGold = math.max(baseline.wonGold or 0, payload.wonGold or 0)
+    baseline.lostGold = math.max(baseline.lostGold or 0, payload.lostGold or 0)
+    baseline.games = math.max(baseline.games or 0, payload.games or 0)
+    self.db.casinoStatBaseline[payload.name] = baseline
+    local stats = self:GetCasinoStats(payload.name)
+    stats.wonGold = math.max(stats.wonGold, baseline.wonGold)
+    stats.lostGold = math.max(stats.lostGold, baseline.lostGold)
+    stats.games = math.max(stats.games, baseline.games)
+    self:RefreshUI()
+end
+
 function LL:SendCasinoSync()
     for name in pairs(self.db.casinoStats) do self:BroadcastCasinoStat(name) end
+    local name = self:PlayerName()
+    local stats = self.db.casinoStatBaseline[name] or { wonGold = 0, lostGold = 0, games = 0 }
+    self:Broadcast("CASINO_STAT_BASELINE", { name = name, wonGold = stats.wonGold, lostGold = stats.lostGold, games = stats.games })
 end
 
 function LL:OnCasinoMessage(kind, payload)
     if kind == "CASINO_STAT" then self:ReceiveCasinoStat(payload) end
+    if kind == "CASINO_STAT_BASELINE" then self:ReceiveCasinoStatBaseline(payload) end
 end
 
 function LL:ParseRandomRoll(message)
